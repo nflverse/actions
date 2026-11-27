@@ -1,0 +1,42 @@
+name: nflverse install rclone
+description: >
+  Installs a pinned upstream rclone release and verifies its checksum.
+  Ubuntu's apt rclone (v1.60) fails on Cloudflare R2 with 501 NotImplemented.
+  Works on GitHub's runners and in ghcr.io/nflverse/r-runner.
+
+inputs:
+  version:
+    description: rclone release tag.
+    required: false
+    default: v1.76.0
+  token:
+    description: Token for downloading the release with the gh cli.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        # Not RCLONE_*: rclone reads those env vars as flags
+        PINNED_RCLONE: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        case "$(uname -m)" in
+          x86_64) arch=amd64 ;;
+          aarch64) arch=arm64 ;;
+          *) echo "::error title=install-rclone::Unsupported architecture $(uname -m)"; exit 1 ;;
+        esac
+        dir=$(mktemp -d)
+        cd "$dir"
+        zip="rclone-${PINNED_RCLONE}-linux-${arch}.zip"
+        gh release download "$PINNED_RCLONE" -R rclone/rclone -p "$zip" -p SHA256SUMS
+        grep " ${zip}\$" SHA256SUMS | sha256sum --check --strict
+        unzip -q "$zip"
+        # root in containers, sudo on GitHub's runners
+        sudo=$([ "$(id -u)" -eq 0 ] || echo sudo)
+        $sudo install -m 0755 "${zip%.zip}/rclone" /usr/local/bin/rclone
+        rm -rf "$dir"
+        rclone version

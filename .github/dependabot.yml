@@ -7,6 +7,9 @@ updates:
       - "/"
       - "/setup"
       - "/season-matrix"
+      - "/commit-and-push"
+      - "/install-rclone"
+      - "/upload-timestamps"
     schedule:
       interval: weekly
     groups:

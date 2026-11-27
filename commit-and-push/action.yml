@@ -1,0 +1,68 @@
+name: nflverse commit and push
+description: >
+  Commits changed files and pushes them to the checked out branch. Does
+  nothing if nothing changed. Rebases onto the remote and retries, so jobs
+  that run often (e.g. every 15 minutes) don't fail on a concurrent push.
+  Works on GitHub's runners and in ghcr.io/nflverse/r-runner.
+
+inputs:
+  paths:
+    description: Files or directories to commit, separated by whitespace or newlines.
+    required: true
+  message:
+    description: Commit message. The current UTC date and time are appended.
+    required: false
+    default: "Automated update"
+  working-directory:
+    description: Git repository to commit in.
+    required: false
+    default: "."
+  retries:
+    description: How often to retry a rejected push.
+    required: false
+    default: "5"
+
+outputs:
+  committed:
+    description: "true if a commit was pushed, otherwise false"
+    value: ${{ steps.commit.outputs.committed }}
+
+runs:
+  using: composite
+  steps:
+    - id: commit
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        COMMIT_PATHS: ${{ inputs.paths }}
+        COMMIT_MESSAGE: ${{ inputs.message }}
+        RETRIES: ${{ inputs.retries }}
+      run: |
+        set -euo pipefail
+
+        # The workspace belongs to another user inside containers
+        git config --global --add safe.directory "$(pwd)"
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+        read -r -a paths <<< "$(tr '\n' ' ' <<< "$COMMIT_PATHS")"
+        git add -- "${paths[@]}"
+        if git diff --cached --quiet; then
+          echo "No changes to commit"
+          echo "committed=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        git commit -q -m "$COMMIT_MESSAGE $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+        branch=$(git rev-parse --abbrev-ref HEAD)
+        for attempt in $(seq 1 "$RETRIES"); do
+          if git pull -q --rebase origin "$branch" && git push -q origin "HEAD:$branch"; then
+            echo "Pushed $(git rev-parse --short HEAD) to $branch"
+            echo "committed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::warning title=commit-and-push::Push attempt $attempt failed, retrying"
+          sleep $(( attempt * 5 ))
+        done
+        echo "::error title=commit-and-push::Failed to push to $branch after $RETRIES attempts"
+        exit 1

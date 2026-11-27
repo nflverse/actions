@@ -1,0 +1,60 @@
+# GitHub disables scheduled workflows in public repos after 60 days without
+# repository activity. Instead of heartbeat commits in every repo, this job
+# re-enables every workflow across the org that GitHub disabled for
+# inactivity. It runs daily, so a disabled schedule misses at most one day.
+#
+# Needs the secret NFLVERSE_WORKFLOWS_TOKEN: a fine-grained token for the
+# nflverse org with access to all repositories and the permission
+# "Actions: Read and write" (nothing else).
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Only list disabled workflows, don't enable them
+        type: boolean
+        default: false
+
+name: Enable workflows
+
+permissions:
+  contents: read
+
+jobs:
+  enable:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.NFLVERSE_WORKFLOWS_TOKEN }}
+      DRY_RUN: ${{ inputs.dry-run || false }}
+    steps:
+      - name: Enable workflows disabled for inactivity
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::The secret NFLVERSE_WORKFLOWS_TOKEN is missing"
+            exit 1
+          fi
+
+          enabled=0
+          failed=0
+          for repo in $(gh repo list nflverse --no-archived --limit 1000 --json nameWithOwner --jq '.[].nameWithOwner'); do
+            disabled=$(gh api --paginate "repos/$repo/actions/workflows?per_page=100" \
+              --jq '.workflows[] | select(.state == "disabled_inactivity") | "\(.id) \(.path)"' 2>/dev/null || true)
+            while read -r id path; do
+              [ -z "$id" ] && continue
+              if [ "$DRY_RUN" == "true" ]; then
+                echo "Disabled for inactivity: $repo $path"
+              elif gh api -X PUT "repos/$repo/actions/workflows/$id/enable" > /dev/null; then
+                echo "Enabled $repo $path"
+                enabled=$((enabled + 1))
+              else
+                echo "::warning::Failed to enable $repo $path"
+                failed=$((failed + 1))
+              fi
+            done <<< "$disabled"
+          done
+
+          echo "Enabled $enabled workflows, $failed failed"
+          echo "Enabled $enabled workflows, $failed failed" >> "$GITHUB_STEP_SUMMARY"
+          [ "$failed" -eq 0 ]

@@ -9,6 +9,10 @@ per job), jobs run in a prebuilt image and only refresh what is outdated.
 | [`images/r-runner`](images/r-runner) | `ghcr.io/nflverse/r-runner`: R, gh, git, jq and the R packages the data repos use |
 | [`setup`](setup) | Checkout + keep nflverse GitHub packages at HEAD + install missing deps / the repo itself |
 | [`season-matrix`](season-matrix) | Current season and a JSON season array for job matrices, no R needed |
+| [`commit-and-push`](commit-and-push) | Commit changed files and push, rebasing and retrying on concurrent pushes |
+| [`upload-timestamps`](upload-timestamps) | Upload `timestamp.txt`/`.json` once per release, only if the run updated data in it |
+| [`install-rclone`](install-rclone) | Pinned, checksum-verified rclone (Ubuntu's apt version fails on R2) |
+| [`enable-workflows`](.github/workflows/enable-workflows.yaml) | Daily job that re-enables scheduled workflows GitHub disabled for inactivity, replacing heartbeat commits. Needs the `NFLVERSE_WORKFLOWS_TOKEN` secret |
 
 ## Usage
 
@@ -30,6 +34,32 @@ jobs:
         env:
           # upload token only on the step that uploads
           GH_TOKEN: ${{ secrets.NFLVERSE_GH_TOKEN }}
+```
+
+Commit files a job produced (replaces the git config/add/commit/push steps):
+
+```yaml
+      - uses: nflverse/actions/commit-and-push@v1
+        with:
+          paths: released_games.csv
+          message: Update released games
+```
+
+Release timestamps once per run, in a final job:
+
+```yaml
+  upload_timestamps:
+    needs: [setup, update]
+    if: ${{ !cancelled() && needs.setup.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: nflverse/actions/upload-timestamps@v1
+        with:
+          started-at: ${{ needs.setup.outputs.started_at }}
+          token: ${{ secrets.NFLVERSE_GH_TOKEN }}
+          releases: |
+            nflverse/nflverse-data pbp
+            nflverse/nflverse-data stats_player
 ```
 
 Season matrix (replaces the R setup job that called `nflverse.workflows`):

@@ -138,3 +138,77 @@ jobs:
 
       - name: Check results
         run: Rscript -e 'nflversetestpkg::hello(); stopifnot(requireNamespace("praise"))'
+
+  commit-and-push:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ["", "ghcr.io/nflverse/r-runner:latest"]
+    name: commit-and-push (${{ matrix.container || 'runner' }})
+    runs-on: ubuntu-latest
+    # an empty image runs the job on the runner itself
+    container:
+      image: ${{ matrix.container }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: actions
+
+      # A local bare repo as "origin", so the test never pushes anywhere real
+      - name: Create test repos
+        run: |
+          set -euo pipefail
+          git config --global init.defaultBranch main
+          git config --global user.name test && git config --global user.email test@example.com
+          git init -q --bare "$RUNNER_TEMP/origin.git"
+          git clone -q "$RUNNER_TEMP/origin.git" work
+          git -C work commit -q --allow-empty -m init && git -C work push -q origin main
+          # a concurrent push the action has to rebase onto
+          git clone -q "$RUNNER_TEMP/origin.git" "$RUNNER_TEMP/other"
+          echo other > "$RUNNER_TEMP/other/other.txt"
+          git -C "$RUNNER_TEMP/other" add other.txt && git -C "$RUNNER_TEMP/other" commit -q -m other
+          git -C "$RUNNER_TEMP/other" push -q origin main
+          echo data > work/data.csv
+
+      - id: changed
+        uses: ./actions/commit-and-push
+        with:
+          paths: data.csv
+          message: Update test data
+          working-directory: work
+
+      - id: unchanged
+        uses: ./actions/commit-and-push
+        with:
+          paths: data.csv
+          working-directory: work
+
+      - name: Check results
+        env:
+          CHANGED: ${{ steps.changed.outputs.committed }}
+          UNCHANGED: ${{ steps.unchanged.outputs.committed }}
+        run: |
+          set -euo pipefail
+          test "$CHANGED" == "true"
+          test "$UNCHANGED" == "false"
+          git clone -q "$RUNNER_TEMP/origin.git" "$RUNNER_TEMP/check"
+          test -f "$RUNNER_TEMP/check/data.csv"
+          test -f "$RUNNER_TEMP/check/other.txt"
+          git -C "$RUNNER_TEMP/check" log --oneline
+
+  install-rclone:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ["", "ghcr.io/nflverse/r-runner:latest"]
+    name: install-rclone (${{ matrix.container || 'runner' }})
+    runs-on: ubuntu-latest
+    # an empty image runs the job on the runner itself
+    container:
+      image: ${{ matrix.container }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./install-rclone
+      - run: rclone version | grep -q "rclone v1.76.0"
