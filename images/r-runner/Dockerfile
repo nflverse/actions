@@ -23,8 +23,12 @@ LABEL org.opencontainers.image.licenses="MIT"
 #      breaks workflows that commit files
 # jq: JSON handling in workflow shell steps (e.g. the season-matrix action)
 # unzip: rclone and other release downloads
+# libcurl4-openssl-dev libssl-dev libicu-dev: system requirements pak checks
+#      for when setup builds a private package from source (nflapi, ...).
+#      Without them pak runs apt-get update + install in every such job (~6s)
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl gpg git jq unzip \
+     libcurl4-openssl-dev libssl-dev libicu-dev \
   && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
      -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
