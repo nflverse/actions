@@ -1,0 +1,88 @@
+name: nflverse app token
+description: >
+  Short-lived token (1 hour, revoked when the job ends) of the "nflverse
+  actions" GitHub App, limited to the repositories and permissions a step
+  needs. Replaces the org PATs, see nflverse/actions#1.
+
+inputs:
+  client-id:
+    description: Client ID of the app. Pass vars.NFLVERSE_APP_CLIENT_ID.
+    required: true
+  private-key:
+    description: Private key of the app. Pass secrets.NFLVERSE_APP_PRIVATE_KEY.
+    required: true
+  repositories:
+    description: >
+      nflverse repositories the token can access, separated by commas or
+      newlines, e.g. "nflapi, nfldx". Empty: only the current repository.
+      "all": every repository the app is installed on.
+    required: false
+    default: ""
+  contents:
+    description: >
+      Contents permission: "read" (default), "write" (releases, pushes, tags)
+      or "" for none.
+    required: false
+    default: read
+  actions:
+    description: >
+      Actions permission: "read", "write" or "" (default) for none.
+    required: false
+    default: ""
+
+outputs:
+  token:
+    description: The installation token
+    value: ${{ steps.current.outputs.token || steps.all.outputs.token || steps.listed.outputs.token }}
+
+runs:
+  using: composite
+  steps:
+    # Without any permission input the token would get every permission of
+    # the app, so ask for at least one, explicitly
+    - name: Check inputs
+      shell: bash
+      env:
+        CONTENTS: ${{ inputs.contents }}
+        ACTIONS: ${{ inputs.actions }}
+      run: |
+        for p in "contents=$CONTENTS" "actions=$ACTIONS"; do
+          if ! [[ "${p#*=}" =~ ^(|read|write)$ ]]; then
+            echo "::error title=app-token::${p%%=*} must be read, write or empty, got '${p#*=}'"
+            exit 1
+          fi
+        done
+        if [ -z "$CONTENTS$ACTIONS" ]; then
+          echo "::error title=app-token::Set contents or actions: a token without permission inputs would get all permissions of the app"
+          exit 1
+        fi
+
+    - id: current
+      if: inputs.repositories == ''
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        permission-contents: ${{ inputs.contents }}
+        permission-actions: ${{ inputs.actions }}
+
+    - id: all
+      if: inputs.repositories == 'all'
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: nflverse
+        permission-contents: ${{ inputs.contents }}
+        permission-actions: ${{ inputs.actions }}
+
+    - id: listed
+      if: inputs.repositories != '' && inputs.repositories != 'all'
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: nflverse
+        repositories: ${{ inputs.repositories }}
+        permission-contents: ${{ inputs.contents }}
+        permission-actions: ${{ inputs.actions }}

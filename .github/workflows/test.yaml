@@ -175,8 +175,8 @@ jobs:
       - name: Check results
         run: Rscript -e 'nflversetestpkg::hello(); stopifnot(requireNamespace("praise"))'
 
-  # The private package path: no r-universe binary, GitHub install with the
-  # read-only org secret NFLVERSE_READ_TOKEN
+  # The private package path: no r-universe binary, GitHub install with a
+  # read-only app token for nflapi
   setup-private:
     needs: changes
     if: >-
@@ -187,25 +187,23 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Check secret
-        env:
-          READ_TOKEN: ${{ secrets.NFLVERSE_READ_TOKEN }}
-        run: |
-          if [ -z "$READ_TOKEN" ]; then
-            echo "::error::The org secret NFLVERSE_READ_TOKEN isn't available to this repo"
-            exit 1
-          fi
+      - id: token
+        uses: ./app-token
+        with:
+          client-id: ${{ vars.NFLVERSE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NFLVERSE_APP_PRIVATE_KEY }}
+          repositories: nflapi
 
       - name: Run setup (private GitHub package)
         uses: ./setup
         with:
           checkout: false
           packages: nflverse/nflapi
-          github-pat: ${{ secrets.NFLVERSE_READ_TOKEN }}
+          github-pat: ${{ steps.token.outputs.token }}
 
       - name: Check results
         env:
-          GITHUB_PAT: ${{ secrets.NFLVERSE_READ_TOKEN }}
+          GITHUB_PAT: ${{ steps.token.outputs.token }}
         run: |
           Rscript -e '
             loadNamespace("nflapi")
@@ -293,6 +291,69 @@ jobs:
       # (exit 141 under pipefail)
       - run: '[[ "$(rclone version)" == *"rclone v1.76.0"* ]]'
 
+  # Tokens are limited to the requested repos and permissions, and the action
+  # refuses to mint a token without permission inputs
+  app-token:
+    needs: changes
+    if: >-
+      needs.changes.outputs.run == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: current
+        uses: ./app-token
+        with:
+          client-id: ${{ vars.NFLVERSE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NFLVERSE_APP_PRIVATE_KEY }}
+
+      - id: listed
+        uses: ./app-token
+        with:
+          client-id: ${{ vars.NFLVERSE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NFLVERSE_APP_PRIVATE_KEY }}
+          repositories: nflapi, nfldx
+
+      - id: all
+        uses: ./app-token
+        with:
+          client-id: ${{ vars.NFLVERSE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NFLVERSE_APP_PRIVATE_KEY }}
+          repositories: all
+          contents: ""
+          actions: read
+
+      - id: none
+        continue-on-error: true
+        uses: ./app-token
+        with:
+          client-id: ${{ vars.NFLVERSE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NFLVERSE_APP_PRIVATE_KEY }}
+          contents: ""
+
+      - name: Check tokens
+        env:
+          CURRENT: ${{ steps.current.outputs.token }}
+          LISTED: ${{ steps.listed.outputs.token }}
+          ALL: ${{ steps.all.outputs.token }}
+          NONE: ${{ steps.none.outcome }}
+        run: |
+          set -euo pipefail
+          repos() { GH_TOKEN="$1" gh api --paginate /installation/repositories --jq '.repositories[].name' | sort | paste -sd, -; }
+          test "$(repos "$CURRENT")" == "actions"
+          test "$(repos "$LISTED")" == "nflapi,nfldx"
+          test "$(repos "$ALL" | tr ',' '\n' | wc -l)" -ge 30
+          # "! cmd" never stops a script under set -e, so check denials explicitly
+          denied() { if GH_TOKEN="$1" gh api "$2" > /dev/null 2>&1; then echo "::error::$3"; exit 1; fi; }
+          # nflapi is private, so these need the permission (public repos don't)
+          denied "$LISTED" repos/nflverse/nflapi/actions/workflows "contents-only token can read the Actions API"
+          denied "$ALL" repos/nflverse/nflapi/contents/DESCRIPTION "actions-only token can read private contents"
+          GH_TOKEN="$ALL" gh api repos/nflverse/nflapi/actions/workflows > /dev/null
+          GH_TOKEN="$LISTED" gh api repos/nflverse/nflapi/contents/DESCRIPTION > /dev/null
+          test "$NONE" == "failure"
+          echo "All app-token checks passed"
+
   # Every repo that uses (or will use) the image: its GitHub packages and the
   # dependencies in its DESCRIPTION must install and load. Catches a missing
   # system library or a broken package before a data job does. Keep the list
@@ -355,17 +416,26 @@ jobs:
             echo "$REPO has no DESCRIPTION, only checking its packages"
           fi
 
+      # read-only, for the private packages. Public repos are readable with
+      # any token.
+      - id: token
+        uses: ./actions/app-token
+        with:
+          client-id: ${{ vars.NFLVERSE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NFLVERSE_APP_PRIVATE_KEY }}
+          repositories: nflapi, ngsscrapR, nflverse-espn, nfldx
+
       - name: Run setup
         uses: ./actions/setup
         with:
           checkout: false
           packages: ${{ matrix.packages }}
-          github-pat: ${{ secrets.NFLVERSE_READ_TOKEN }}
+          github-pat: ${{ steps.token.outputs.token }}
 
       # setup never fails the job, loading everything is the real check
       - name: Load packages
         env:
-          GITHUB_PAT: ${{ secrets.NFLVERSE_READ_TOKEN }}
+          GITHUB_PAT: ${{ steps.token.outputs.token }}
         run: |
           Rscript -e '
             refs <- strsplit(trimws(Sys.getenv("PACKAGES")), "[[:space:],]+")[[1]]
@@ -403,7 +473,7 @@ jobs:
   # passed: docs-only PRs, and setup-private/consumers on fork PRs, which get
   # no secrets.
   all-tests:
-    needs: [changes, season-matrix, setup, setup-local, setup-private, commit-and-push, install-rclone, consumers]
+    needs: [changes, season-matrix, setup, setup-local, setup-private, commit-and-push, install-rclone, app-token, consumers]
     if: always()
     name: all tests
     runs-on: ubuntu-latest
