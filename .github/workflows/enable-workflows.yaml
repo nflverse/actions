@@ -27,6 +27,11 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.NFLVERSE_WORKFLOWS_TOKEN }}
       DRY_RUN: ${{ inputs.dry-run || false }}
+      # Workflows to leave disabled, one "repo/workflow-path" per line.
+      # Whole repos as "repo/*".
+      EXCLUDE: |
+        nflverse/nflverse-pff/*
+        nflverse/NFLData.jl/.github/workflows/CompatHelper.yml
     steps:
       - name: Enable workflows disabled for inactivity
         run: |
@@ -36,14 +41,32 @@ jobs:
             exit 1
           fi
 
+          excluded() {
+            local key="$1/$2" pattern
+            while read -r pattern; do
+              [ -z "$pattern" ] && continue
+              # shellcheck disable=SC2053
+              [[ "$key" == $pattern ]] && return 0
+            done <<< "$EXCLUDE"
+            return 1
+          }
+
           enabled=0
           failed=0
+          repos=0
           for repo in $(gh repo list nflverse --no-archived --limit 1000 --json nameWithOwner --jq '.[].nameWithOwner'); do
-            disabled=$(gh api --paginate "repos/$repo/actions/workflows?per_page=100" \
-              --jq '.workflows[] | select(.state == "disabled_inactivity") | "\(.id) \(.path)"' 2>/dev/null || true)
+            repos=$((repos + 1))
+            if ! disabled=$(gh api --paginate "repos/$repo/actions/workflows?per_page=100" \
+              --jq '.workflows[] | select(.state == "disabled_inactivity") | "\(.id) \(.path)"' 2>&1); then
+              echo "::warning::Can't list workflows of $repo. Does the token cover it? $disabled"
+              failed=$((failed + 1))
+              continue
+            fi
             while read -r id path; do
               [ -z "$id" ] && continue
-              if [ "$DRY_RUN" == "true" ]; then
+              if excluded "$repo" "$path"; then
+                echo "Excluded, leaving disabled: $repo $path"
+              elif [ "$DRY_RUN" == "true" ]; then
                 echo "Disabled for inactivity: $repo $path"
               elif gh api -X PUT "repos/$repo/actions/workflows/$id/enable" > /dev/null; then
                 echo "Enabled $repo $path"
@@ -55,6 +78,7 @@ jobs:
             done <<< "$disabled"
           done
 
-          echo "Enabled $enabled workflows, $failed failed"
-          echo "Enabled $enabled workflows, $failed failed" >> "$GITHUB_STEP_SUMMARY"
+          msg="Checked $repos repos. Enabled $enabled workflows, $failed failures"
+          echo "$msg"
+          echo "$msg" >> "$GITHUB_STEP_SUMMARY"
           [ "$failed" -eq 0 ]
