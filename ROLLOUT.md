@@ -65,11 +65,11 @@ Last updated: 2026-11-27
       its heartbeat workflow (only once `enable-workflows` runs).
 - [ ] Data repos: switch `NFLVERSE_READ_TOKEN` and the upload token
       `NFLVERSE_GH_TOKEN` to `app-token` during each repo's migration
-      (done: nflverse-pbp-internal, nflverse-pbp). Add the
+      (done: nflverse-pbp-internal, nflverse-pbp, ngs-data). Add the
       repo to the visibility of the org secret `NFLVERSE_APP_PRIVATE_KEY`
-      first. Release steps must stay under 1 hour per token (ngs-data and
-      nflverse-data jobs run 42–54 min): split them or mint the token right
-      before the upload. Revoke both PATs once nothing uses them (#1).
+      first. Release steps must stay under 1 hour per token. Check where long
+      jobs spend their time first: in ngs-data it was setup, not the release
+      step (nflverse-data's archive jobs, 42 min, still to check). Revoke both PATs once nothing uses them (#1).
 - [ ] Afterwards: retire the `nflverse.workflows` R package (nflverse-workflows
       repo) once nothing calls it.
 
@@ -81,7 +81,7 @@ Setup / total seconds from the latest successful run before migration.
 |---|---|---|---|---|
 | 1 | nflverse-pbp `update_data`, `update_teams_color_logos` | 26–31 / 61–72 (own image already) | `nflverse/nflfastR nflverse/nflreadr nflverse/nflverse-data` | **Done** (#108, #109, 2026-11-27; jobs 53–70s, image pull + setup 27–40s). App tokens for all uploads (nflverse-data, nflverse-pbp), no PAT left. Old `nflverse-pbp` image package deleted | Switch from its own image + `exec/refresh_nflverse.R` to r-runner + `setup`; `upload_timestamps` job → action; then delete `docker/` and `build_image.yaml` there |
 | 2 | nflverse-pbp-internal `release_raw_pbp` (every 15 min), `refresh_raw_pbp` | 62 / 70 | `nflverse/nflapi nflverse/nflverse-data nflverse/nflreadr`, `install-local: true` | **Done** (nflverse-pbp-internal#2, 2026-11-27): ~40s per run (pull 13–21s, setup 18–21s incl. building nflapi). First repo on app tokens: read for nflapi in setup, write to nflverse-pbp only on the release step (uploads show as `nflverse-actions[bot]`). No PAT left |
-| 3 | ngs-data `update_ngs` | 73–109 per job | `nflverse/nflverse-data nflverse/nflreadr` | Setup job → `season-matrix` (first-season 2016) |
+| 3 | ngs-data `update_ngs` | 73–109 per job | `nflverse/nflverse-data nflverse/nflreadr` | **Done** (ngs-data#7, 2026-11-27): jobs 27–39s. The 25–54 min jobs were `setup-r` / `setup-r-dependencies` hanging, not the release step. App tokens: this repo (`ngs-season`) for the season jobs, nflverse-data (`nextgen_stats`) for combine |
 | 3 | nflverse-players `update_players` | 64–96 per job, 12+ jobs | `nflverse/nflapi nflverse/nflverse-espn nflverse/nflverse-data nflverse/nflreadr nflverse/undercover`, `install-local: true` | `season-matrix` with `roster: true`, first-season 1999 |
 | 3 | nflverse-ftn (4 workflows) | 81 / 91 | `nflverse/nflverse-data nflverse/nflreadr`, `install-local: true` | `update_participation` → `season-matrix` (2023). Job names are leftover "R-CMD-check" |
 | 4 | nflverse-rosters (rosters, injuries, depth_charts, officials) | 65–103 | nflapi, ngsscrapR, nflverse-espn, nflverse-players, nflverse-data, nflreadr (depth charts: nfldx secrets) | Consider merging the three 07:07 workflows into one |
@@ -105,6 +105,10 @@ Setup / total seconds from the latest successful run before migration.
   apt-get update + install in every source build, even with nothing
   missing. The image sets `PKG_SYSREQS_UPDATE=false`; missing ones are
   still installed.
+- Many data repos have a repository ruleset "protecc" (1 approval
+  required, admins may bypass) besides or instead of classic branch
+  protection. Check `gh api repos/nflverse/<repo>/rules/branches/<branch>`,
+  not only `.../branches/<branch>/protection`, before planning a merge.
 - Most data workflows are started by guga31bb's cron jobs via
   `gh workflow run` (GitHub's schedules are unreliable), so runs show up as
   `workflow_dispatch`. When a migration renames a workflow or changes its
