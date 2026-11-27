@@ -65,7 +65,7 @@ Last updated: 2026-11-27
       its heartbeat workflow (only once `enable-workflows` runs).
 - [ ] Data repos: switch `NFLVERSE_READ_TOKEN` and the upload token
       `NFLVERSE_GH_TOKEN` to `app-token` during each repo's migration
-      (done: nflverse-pbp-internal, nflverse-pbp, ngs-data). Add the
+      (done: nflverse-pbp-internal, nflverse-pbp, ngs-data, nflverse-players). Add the
       repo to the visibility of the org secret `NFLVERSE_APP_PRIVATE_KEY`
       first. Release steps must stay under 1 hour per token. Check where long
       jobs spend their time first: in ngs-data it was setup, not the release
@@ -82,7 +82,7 @@ Setup / total seconds from the latest successful run before migration.
 | 1 | nflverse-pbp `update_data`, `update_teams_color_logos` | 26–31 / 61–72 (own image already) | `nflverse/nflfastR nflverse/nflreadr nflverse/nflverse-data` | **Done** (#108, #109, 2026-11-27; jobs 53–70s, image pull + setup 27–40s). App tokens for all uploads (nflverse-data, nflverse-pbp), no PAT left. Old `nflverse-pbp` image package deleted | Switch from its own image + `exec/refresh_nflverse.R` to r-runner + `setup`; `upload_timestamps` job → action; then delete `docker/` and `build_image.yaml` there |
 | 2 | nflverse-pbp-internal `release_raw_pbp` (every 15 min), `refresh_raw_pbp` | 62 / 70 | `nflverse/nflapi nflverse/nflverse-data nflverse/nflreadr`, `install-local: true` | **Done** (nflverse-pbp-internal#2, 2026-11-27): ~40s per run (pull 13–21s, setup 18–21s incl. building nflapi). First repo on app tokens: read for nflapi in setup, write to nflverse-pbp only on the release step (uploads show as `nflverse-actions[bot]`). No PAT left |
 | 3 | ngs-data `update_ngs` | 73–109 per job | `nflverse/nflverse-data nflverse/nflreadr` | **Done** (ngs-data#7, 2026-11-27): jobs 27–39s. The 25–54 min jobs were `setup-r` / `setup-r-dependencies` hanging, not the release step. App tokens: this repo (`ngs-season`) for the season jobs, nflverse-data (`nextgen_stats`) for combine |
-| 3 | nflverse-players `update_players` | 64–96 per job, 12+ jobs | `nflverse/nflapi nflverse/nflverse-espn nflverse/nflverse-data nflverse/nflreadr nflverse/undercover`, `install-local: true` | `season-matrix` with `roster: true`, first-season 1999 |
+| 3 | nflverse-players `update_players` | 64–96 per job, 12+ jobs | `nflverse/nflapi nflverse/nflverse-espn nflverse/nflverse-data nflverse/nflreadr nflverse/undercover`, `install-local: true` | **Done** (nflverse-players#33, 2026-11-27): 14 jobs at 44–65s, setup 15–22s. Long jobs (up to 33 min) were setup hangs. App tokens: read for nflapi/nflverse-espn, write to this repo (+ nflverse-data for `build_dataset`). R-CMD-check / test-package use a read app token. Open: the test "manual overwrite is clean" fails on master (`inst/players_manual_overwrite.json` needs cleaning) |
 | 3 | nflverse-ftn (4 workflows) | 81 / 91 | `nflverse/nflverse-data nflverse/nflreadr`, `install-local: true` | `update_participation` → `season-matrix` (2023). Job names are leftover "R-CMD-check" |
 | 4 | nflverse-rosters (rosters, injuries, depth_charts, officials) | 65–103 | nflapi, ngsscrapR, nflverse-espn, nflverse-players, nflverse-data, nflreadr (depth charts: nfldx secrets) | Consider merging the three 07:07 workflows into one |
 | 4 | nflverse-pfr (snap_counts, adv_stats) | 63–86 | `nflverse/nflverse-data nflverse/undercover`, `install-local: true` | Crons on `:00`: offset them |
