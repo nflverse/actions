@@ -15,3 +15,11 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+
+  # R minor version of the image base (rocker/r-ver:4.6 -> 4.7). Its PR build
+  # can't push (read-only token): run "Build r-runner image" with
+  # workflow_dispatch on the Dependabot branch to test the image.
+  - package-ecosystem: docker
+    directory: "/images/r-runner"
+    schedule:
+      interval: weekly

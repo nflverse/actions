@@ -132,6 +132,36 @@ git tag -f v1 && git push -f origin v1
 
 Breaking changes to inputs or outputs get `v2`.
 
-The image is rebuilt on changes to `images/r-runner`, weekly (Tuesday 06:17
-UTC) and on manual trigger. It is tagged `latest`, `YYYY-MM-DD` and the commit
-SHA. The "Test actions" workflow runs against each newly pushed image.
+### The image
+
+`ghcr.io/nflverse/r-runner:latest` only ever points at an image that passed
+the tests. [`build-r-runner.yaml`](.github/workflows/build-r-runner.yaml)
+runs on changes to `images/r-runner`, weekly (Tuesday 06:17 UTC, for R patch
+releases and new CRAN packages) and on manual trigger:
+
+1. **build** pushes the new image as `candidate`.
+2. **test** runs [`test.yaml`](.github/workflows/test.yaml) against it: all
+   actions, plus a `consumers` job that installs and loads the GitHub
+   packages and `DESCRIPTION` dependencies of every data repo. **Add a repo
+   there when it starts using the image.**
+3. **measure** compares pull and create times and size with the current
+   `latest` (job summary). It doesn't block promotion.
+4. **promote** tags the tested image `latest`, `YYYY-MM-DD` and the commit
+   SHA. Nothing is promoted if a test fails: `latest` stays on the last good
+   image and the run fails.
+
+**Testing an image change before merging:** a PR from a branch in this repo
+pushes `test-pr-<number>` and runs the tests and measure job against it. For
+a Dependabot PR (read-only token) or any other branch, run the workflow with
+workflow_dispatch on that branch: it pushes `test-<branch>`. Only main ever
+promotes.
+
+**Rolling back:** run "Build r-runner image" on main with `rollback-to` set
+to an earlier date tag (e.g. `2026-11-24`) or commit SHA. `latest` points at
+that image within seconds, no rebuild. The next build promotes a new image
+again if its tests pass, so add a test for whatever broke (or disable the
+workflow until it's fixed).
+
+**R versions:** the base is pinned to the R minor version
+(`rocker/r-ver:4.6`). Dependabot opens a PR for the next minor version,
+which is tested like any other image change.
