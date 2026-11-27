@@ -106,6 +106,10 @@ package's version and commit.
 
 ## Rules
 
+- **Set `shell: bash` in container jobs.** `run:` steps in a job with
+  `container:` use `sh` by default, not bash. Add `defaults: run: shell: bash`
+  to the workflow if a step uses bash syntax.
+
 - **Only public packages in the image.** Private packages (nflapi, ngsscrapR,
   nflverse.espn, nfldx, ...) go into `packages` of the setup action. Put their
   dependencies into [`packages.txt`](images/r-runner/packages.txt) though, so

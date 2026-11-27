@@ -20,6 +20,11 @@ name: Test actions
 permissions:
   contents: read
 
+# run steps in container jobs default to sh, not bash
+defaults:
+  run:
+    shell: bash
+
 jobs:
   season-matrix:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
