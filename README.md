@@ -124,13 +124,20 @@ package's version and commit.
 
 ## Releases
 
-`v1` is a moving tag. After merging a non-breaking change:
+Changes reach `main` only through PRs, and the PR check `all tests` has to
+pass (ruleset "main").
+
+`v1` is a moving tag. After merging a non-breaking change, run the
+[Release](.github/workflows/release.yaml) workflow on main:
 
 ```sh
-git tag -f v1 && git push -f origin v1
+gh workflow run release.yaml -R nflverse/actions
 ```
 
-Breaking changes to inputs or outputs get `v2`.
+It runs the full tests on main's HEAD and then moves `v1` there. No one can
+push `v*` tags directly (ruleset "release tags"), so every move is tested and
+logged. To undo a release, revert on main and release again. Breaking
+changes to inputs or outputs get `v2`: run the workflow with `tag: v2`.
 
 ### The image
 
