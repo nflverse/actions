@@ -34,11 +34,11 @@ Last updated: 2026-11-27
       revive them. The daily schedule is live.
 - [x] Private package path tested (`setup-private` job): nflapi installed
       from GitHub at HEAD in 18s.
+- [x] `upload-timestamps` tested 2026-11-27 (nflverse-pbp run 46053835741 from
+      the PR #108 branch): 4 releases updated, only those with new files.
 
 ## Open
 
-- [ ] `upload-timestamps` is untested (writes to real releases). First real
-      test: when nflverse-pbp switches its `upload_timestamps` job to it.
 - [ ] Add `libcurl4-openssl-dev libssl-dev libicu-dev` to the image: pak
       runs apt-get for them (~4s) on every GitHub source install of a private
       package.
@@ -53,7 +53,7 @@ Setup / total seconds from the latest successful run before migration.
 
 | # | Repo / workflow | Setup / total | Packages for `setup` | Notes |
 |---|---|---|---|---|
-| 1 | nflverse-pbp `update_data`, `update_teams_color_logos` | 26–31 / 61–72 (own image already) | `nflverse/nflfastR nflverse/nflreadr nflverse/nflverse-data` | Switch from its own image + `exec/refresh_nflverse.R` to r-runner + `setup`; `upload_timestamps` job → action; then delete `docker/` and `build_image.yaml` there |
+| 1 | nflverse-pbp `update_data`, `update_teams_color_logos` | 26–31 / 61–72 (own image already) | `nflverse/nflfastR nflverse/nflreadr nflverse/nflverse-data` | **PR #108 open, tested on the branch** (jobs 53–70s, image pull + setup 27–40s). After merge: delete the `ghcr.io/nflverse/nflverse-pbp` package if it's private. Switch from its own image + `exec/refresh_nflverse.R` to r-runner + `setup`; `upload_timestamps` job → action; then delete `docker/` and `build_image.yaml` there |
 | 2 | nflverse-pbp-internal `release_raw_pbp` (every 15 min), `refresh_raw_pbp` | 62 / 70 | `nflverse/nflapi nflverse/nflverse-data nflverse/nflreadr`, `install-local: true` | Biggest gain. First private package (needs `NFLVERSE_READ_TOKEN`). Commit step → `commit-and-push` |
 | 3 | ngs-data `update_ngs` | 73–109 per job | `nflverse/nflverse-data nflverse/nflreadr` | Setup job → `season-matrix` (first-season 2016) |
 | 3 | nflverse-players `update_players` | 64–96 per job, 12+ jobs | `nflverse/nflapi nflverse/nflverse-espn nflverse/nflverse-data nflverse/nflreadr nflverse/undercover`, `install-local: true` | `season-matrix` with `roster: true`, first-season 1999 |

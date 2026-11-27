@@ -31,6 +31,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      measure: ${{ steps.tags.outputs.measure }}
     steps:
       - uses: actions/checkout@v7
 
@@ -43,22 +45,79 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # main: latest, date and commit. Other branches (workflow_dispatch) push
+      # only test-<branch>, to measure and test an image change before it
+      # becomes latest: gh workflow run test.yaml --ref <branch> -f image=...
       - name: Tags
         id: tags
         run: |
+          if [ "$GITHUB_REF" == "refs/heads/main" ]; then
+            tags="$IMAGE:latest $IMAGE:$(date -u +%Y-%m-%d) $IMAGE:${GITHUB_SHA}"
+            measure="[\"$IMAGE:latest\"]"
+          else
+            tags="$IMAGE:test-${GITHUB_REF_NAME//[^a-zA-Z0-9_.-]/-}"
+            # compare with the current latest in the same run
+            measure="[\"$tags\", \"$IMAGE:latest\"]"
+          fi
           {
             echo "tags<<EOF"
-            echo "$IMAGE:latest"
-            echo "$IMAGE:$(date -u +%Y-%m-%d)"
-            echo "$IMAGE:${GITHUB_SHA}"
+            tr ' ' '\n' <<< "$tags"
             echo "EOF"
+            echo "measure=$measure"
           } >> "$GITHUB_OUTPUT"
 
       - uses: docker/build-push-action@v7
         with:
           context: images/r-runner
-          push: ${{ github.event_name != 'pull_request' }}
+          # zstd layers unpack much faster than gzip, which is a large part of
+          # every job's image pull. force-compression recompresses the base
+          # image layers too.
+          outputs: type=image,push=${{ github.event_name != 'pull_request' }},compression=zstd,force-compression=true,oci-mediatypes=true
           # always start fresh, otherwise cached layers keep old packages
           no-cache: true
           pull: true
           tags: ${{ steps.tags.outputs.tags }}
+
+  # Time what every job using the image pays in "Initialize containers": pull
+  # and create on a fresh runner. Results go to the job summary.
+  measure:
+    needs: build
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJson(needs.build.outputs.measure) }}
+        attempt: [1, 2]
+    name: measure ${{ matrix.image }} (${{ matrix.attempt }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      IMAGE_REF: ${{ matrix.image }}
+    steps:
+      - name: Pull and create
+        run: |
+          set -euo pipefail
+          t0=$(date +%s.%N)
+          docker pull -q "$IMAGE_REF" > /dev/null
+          t1=$(date +%s.%N)
+          id=$(docker create "$IMAGE_REF" tail -f /dev/null)
+          t2=$(date +%s.%N)
+          docker start "$id" > /dev/null
+          docker exec "$id" Rscript -e 'invisible(loadNamespace("nflfastR"))'
+          t3=$(date +%s.%N)
+
+          # compressed size and layer compression of the amd64 image
+          digest=$(docker buildx imagetools inspect --raw "$IMAGE_REF" \
+            | jq -r '.manifests[] | select(.platform.architecture == "amd64") | .digest')
+          manifest=$(docker buildx imagetools inspect --raw "${IMAGE_REF%:*}@$digest")
+          compressed=$(jq '[.layers[].size] | add / 1e6 | round' <<< "$manifest")
+          compression=$(jq -r '[.layers[].mediaType | split(".") | last] | unique | join(", ")' <<< "$manifest")
+
+          {
+            echo "| Image | Compressed | Layers | Pull | Create | Start + load nflfastR |"
+            echo "|---|---|---|---|---|---|"
+            printf '| `%s` | %s MB | %s | %.1fs | %.1fs | %.1fs |\n' "$IMAGE_REF" \
+              "$compressed" "$compression" \
+              "$(awk "BEGIN { print $t1 - $t0 }")" "$(awk "BEGIN { print $t2 - $t1 }")" "$(awk "BEGIN { print $t3 - $t2 }")"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
