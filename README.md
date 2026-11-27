@@ -159,6 +159,12 @@ releases and new CRAN packages) and on manual trigger:
    SHA. Nothing is promoted if a test fails: `latest` stays on the last good
    image and the run fails.
 
+5. **cleanup** deletes test tags of closed PRs and deleted branches, and
+   promoted images beyond the newest 8 besides `latest` (about two months of
+   weekly builds), each with its two child manifests. Untagged leftovers go
+   once they're a day old. See the plan without deleting:
+   `GH_TOKEN=$(gh auth token) DRY_RUN=true python3 .github/scripts/cleanup_r_runner.py`
+
 **Testing an image change before merging:** a PR from a branch in this repo
 pushes `test-pr-<number>` and runs the tests and measure job against it. For
 a Dependabot PR (read-only token) or any other branch, run the workflow with

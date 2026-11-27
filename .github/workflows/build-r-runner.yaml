@@ -29,6 +29,9 @@ on:
 #   measure pull/create times and size, compared with the current latest
 #   promote main only: tags the tested image latest, YYYY-MM-DD and the
 #           commit SHA. Retagging copies no layers, it takes seconds
+#   cleanup main only, after promote: deletes test tags of closed PRs and
+#           deleted branches and promoted images beyond the newest 8, each with
+#           its child manifests (.github/scripts/cleanup_r_runner.py)
 #   rollback workflow_dispatch with rollback-to: points latest at an earlier
 #           date or SHA tag, no build
 name: Build r-runner image
@@ -188,6 +191,28 @@ jobs:
             echo
             echo "Roll back: run this workflow with rollback-to set to an earlier date tag."
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Every image is a tagged index plus two untagged child manifests. Generic
+  # "delete untagged versions" cleanups delete those children and break the
+  # image, so this decides per image. Never deletes latest, candidate or
+  # anything a kept image refers to. DRY_RUN=true locally to see the plan.
+  cleanup:
+    needs: promote
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Delete images nobody needs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP_PROMOTED: "8"
+        run: python3 -I .github/scripts/cleanup_r_runner.py
 
   rollback:
     if: ${{ inputs.rollback-to }}
