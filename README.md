@@ -163,10 +163,10 @@ gh workflow run release.yaml -R nflverse/actions
 ```
 
 It runs the full tests on main's HEAD and then moves `v1` there, so every
-move is tested and logged. **Don't push `v*` tags by hand.** A ruleset that
-enforces this follows once the nflverse GitHub App exists (#1): GitHub doesn't
-let `GITHUB_TOKEN` bypass rulesets, so the workflow needs the app's token to
-move a protected tag. To undo a release, revert on main and release again. Breaking
+move is tested and logged. Nobody can push `v*` tags directly: the ruleset
+"release tags" only lets the "nflverse actions" app change them, and the
+workflow moves the tag with an app token. To undo a release, revert on main
+and release again. Breaking
 changes to inputs or outputs get `v2`: run the workflow with `tag: v2`.
 
 ### The image

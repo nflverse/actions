@@ -9,10 +9,10 @@ on:
         required: true
         default: v1
 
-# The way to move or create a v* tag: runs the full tests on main's HEAD
-# first, then moves the tag there. A tag ruleset that blocks direct pushes
-# follows once the nflverse GitHub App exists (#1): GITHUB_TOKEN can't bypass
-# rulesets, so this workflow will then move the tag with the app's token.
+# The only way to move or create a v* tag: the ruleset "release tags" blocks
+# everyone except the "nflverse actions" app, whose token this workflow uses
+# (GITHUB_TOKEN can't bypass rulesets). Runs the full tests on main's HEAD
+# first, then moves the tag there.
 name: Release
 
 permissions:
@@ -48,13 +48,23 @@ jobs:
   tag:
     needs: test
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     env:
-      GH_TOKEN: ${{ github.token }}
       TAG: ${{ inputs.tag }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: app-token
+
+      - id: token
+        uses: ./app-token
+        with:
+          client-id: ${{ vars.NFLVERSE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NFLVERSE_APP_PRIVATE_KEY }}
+          contents: write
+
       - name: Point ${{ inputs.tag }} at ${{ github.sha }}
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
         run: |
           set -euo pipefail
           old=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha 2> /dev/null || true)
