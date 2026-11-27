@@ -8,9 +8,11 @@
 # ngsscrapR, nflverse.espn, nfldx, ...) are installed at job time by the setup
 # action. Their dependencies are preinstalled here, so that takes seconds.
 
-# rocker/r-ver:latest = latest R release on Ubuntu LTS, with CRAN set to
-# Posit Public Package Manager binaries
-FROM rocker/r-ver:latest
+# rocker/r-ver = R on Ubuntu LTS, with CRAN set to Posit Public Package
+# Manager binaries. Pinned to the R minor version: the weekly rebuild picks up
+# R patch releases, a new minor version (often with a new Ubuntu base) comes
+# as a Dependabot PR and is tested before it becomes latest.
+FROM rocker/r-ver:4.6
 
 LABEL org.opencontainers.image.source="https://github.com/nflverse/actions"
 LABEL org.opencontainers.image.description="R runtime for nflverse data update workflows"

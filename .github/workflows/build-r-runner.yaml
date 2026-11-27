@@ -4,22 +4,37 @@ on:
     paths:
       - "images/r-runner/**"
       - ".github/workflows/build-r-runner.yaml"
-  # build only (no push) to verify changes before they land on main
   pull_request:
     paths:
       - "images/r-runner/**"
       - ".github/workflows/build-r-runner.yaml"
   schedule:
-    # Weekly rebuild (Tuesday 6:17 UTC) to pick up new R and CRAN package
-    # releases. GitHub packages are refreshed in every job by the setup action.
+    # Weekly rebuild (Tuesday 6:17 UTC) to pick up R patch releases and new
+    # CRAN packages. GitHub packages are refreshed in every job by the setup
+    # action.
     - cron: "17 6 * * 2"
   workflow_dispatch:
+    inputs:
+      rollback-to:
+        description: >
+          Roll back instead of building: point latest at this earlier tag,
+          a date (2026-11-24) or a commit SHA. main only.
+        required: false
+        default: ""
 
+# How an image becomes latest:
+#   build   pushes the new image as candidate (main) or test-<branch/PR>
+#   test    runs test.yaml against it: the actions and every consumer repo's
+#           packages. Nothing is promoted if a test fails
+#   measure pull/create times and size, compared with the current latest
+#   promote main only: tags the tested image latest, YYYY-MM-DD and the
+#           commit SHA. Retagging copies no layers, it takes seconds
+#   rollback workflow_dispatch with rollback-to: points latest at an earlier
+#           date or SHA tag, no build
 name: Build r-runner image
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: build-r-runner-${{ github.ref }}
@@ -30,70 +45,93 @@ env:
 
 jobs:
   build:
+    if: ${{ !inputs.rollback-to }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     outputs:
-      measure: ${{ steps.tags.outputs.measure }}
+      push: ${{ steps.tags.outputs.push }}
+      image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+      label: ${{ steps.tags.outputs.label }}
     steps:
       - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@v4
 
+      # Fork and Dependabot PRs get a read-only token: build only, no push.
+      # Run the build with workflow_dispatch on such a branch to test it.
+      - name: Tags
+        id: tags
+        env:
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          push=true
+          if [ "$GITHUB_REF" == "refs/heads/main" ]; then
+            label=candidate
+          elif [ "$GITHUB_EVENT_NAME" == "pull_request" ]; then
+            label="test-pr-$PR_NUMBER"
+            if [ "$SAME_REPO" != "true" ] || [ "$GITHUB_ACTOR" == "dependabot[bot]" ]; then
+              push=false
+            fi
+          else
+            label="test-${GITHUB_REF_NAME//[^a-zA-Z0-9_.-]/-}"
+          fi
+          echo "Tag: $IMAGE:$label | push: $push"
+          {
+            echo "label=$label"
+            echo "push=$push"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: docker/login-action@v4
-        if: github.event_name != 'pull_request'
+        if: steps.tags.outputs.push == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # main: latest, date and commit. Other branches (workflow_dispatch) push
-      # only test-<branch>, to measure and test an image change before it
-      # becomes latest: gh workflow run test.yaml --ref <branch> -f image=...
-      - name: Tags
-        id: tags
-        run: |
-          if [ "$GITHUB_REF" == "refs/heads/main" ]; then
-            tags="$IMAGE:latest $IMAGE:$(date -u +%Y-%m-%d) $IMAGE:${GITHUB_SHA}"
-            measure="[\"$IMAGE:latest\"]"
-          else
-            tags="$IMAGE:test-${GITHUB_REF_NAME//[^a-zA-Z0-9_.-]/-}"
-            # compare with the current latest in the same run
-            measure="[\"$tags\", \"$IMAGE:latest\"]"
-          fi
-          {
-            echo "tags<<EOF"
-            tr ' ' '\n' <<< "$tags"
-            echo "EOF"
-            echo "measure=$measure"
-          } >> "$GITHUB_OUTPUT"
-
-      - uses: docker/build-push-action@v7
+      - id: build
+        uses: docker/build-push-action@v7
         with:
           context: images/r-runner
           # zstd layers unpack much faster than gzip, which is a large part of
           # every job's image pull. force-compression recompresses the base
           # image layers too.
-          outputs: type=image,push=${{ github.event_name != 'pull_request' }},compression=zstd,force-compression=true,oci-mediatypes=true
+          outputs: type=image,push=${{ steps.tags.outputs.push }},compression=zstd,force-compression=true,oci-mediatypes=true
           # always start fresh, otherwise cached layers keep old packages
           no-cache: true
           pull: true
-          tags: ${{ steps.tags.outputs.tags }}
+          tags: ${{ env.IMAGE }}:${{ steps.tags.outputs.label }}
+
+  test:
+    needs: build
+    if: needs.build.outputs.push == 'true'
+    uses: ./.github/workflows/test.yaml
+    with:
+      # by digest, so a concurrent build can't swap the image under the tests
+      image: ${{ needs.build.outputs.image }}
+    # NFLVERSE_READ_TOKEN for the private packages
+    secrets: inherit
+    permissions:
+      contents: read
 
   # Time what every job using the image pays in "Initialize containers": pull
-  # and create on a fresh runner. Results go to the job summary.
+  # and create on a fresh runner, compared with the current latest. Results go
+  # to the job summary. Doesn't block promotion.
   measure:
     needs: build
-    if: github.event_name != 'pull_request'
+    if: needs.build.outputs.push == 'true'
     strategy:
       fail-fast: false
       matrix:
-        image: ${{ fromJson(needs.build.outputs.measure) }}
+        image: ["${{ needs.build.outputs.image }}", "ghcr.io/nflverse/r-runner:latest"]
         attempt: [1, 2]
-    name: measure ${{ matrix.image }} (${{ matrix.attempt }})
+    name: measure ${{ matrix.image == needs.build.outputs.image && needs.build.outputs.label || 'latest' }} (${{ matrix.attempt }})
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     env:
       IMAGE_REF: ${{ matrix.image }}
+      LABEL: ${{ matrix.image == needs.build.outputs.image && needs.build.outputs.label || 'latest' }}
     steps:
       - name: Pull and create
         run: |
@@ -108,16 +146,88 @@ jobs:
           t3=$(date +%s.%N)
 
           # compressed size and layer compression of the amd64 image
+          repo="${IMAGE_REF%@*}"
+          repo="${repo%:*}"
           digest=$(docker buildx imagetools inspect --raw "$IMAGE_REF" \
             | jq -r '.manifests[] | select(.platform.architecture == "amd64") | .digest')
-          manifest=$(docker buildx imagetools inspect --raw "${IMAGE_REF%:*}@$digest")
+          manifest=$(docker buildx imagetools inspect --raw "$repo@$digest")
           compressed=$(jq '[.layers[].size] | add / 1e6 | round' <<< "$manifest")
           compression=$(jq -r '[.layers[].mediaType | split(".") | last] | unique | join(", ")' <<< "$manifest")
 
           {
             echo "| Image | Compressed | Layers | Pull | Create | Start + load nflfastR |"
             echo "|---|---|---|---|---|---|"
-            printf '| `%s` | %s MB | %s | %.1fs | %.1fs | %.1fs |\n' "$IMAGE_REF" \
+            printf '| `%s` | %s MB | %s | %.1fs | %.1fs | %.1fs |\n' "$LABEL" \
               "$compressed" "$compression" \
               "$(awk "BEGIN { print $t1 - $t0 }")" "$(awk "BEGIN { print $t2 - $t1 }")" "$(awk "BEGIN { print $t3 - $t2 }")"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  promote:
+    needs: [build, test]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    env:
+      SOURCE: ${{ needs.build.outputs.image }}
+    steps:
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag as latest
+        run: |
+          set -euo pipefail
+          date=$(date -u +%Y-%m-%d)
+          docker buildx imagetools create \
+            -t "$IMAGE:latest" -t "$IMAGE:$date" -t "$IMAGE:$GITHUB_SHA" "$SOURCE"
+          {
+            echo "Promoted \`$SOURCE\` to \`latest\`, \`$date\` and \`$GITHUB_SHA\`."
+            echo
+            echo "Roll back: run this workflow with rollback-to set to an earlier date tag."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  rollback:
+    if: ${{ inputs.rollback-to }}
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    env:
+      TARGET: ${{ inputs.rollback-to }}
+    steps:
+      - name: Check input
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error title=rollback::Run the rollback on main"
+            exit 1
+          fi
+          # only tags that promote creates, i.e. images that passed the tests
+          if ! [[ "$TARGET" =~ ^([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9a-f]{40})$ ]]; then
+            echo "::error title=rollback::rollback-to must be a date tag (2026-11-24) or a full commit SHA, got '$TARGET'"
+            exit 1
+          fi
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Point latest at ${{ inputs.rollback-to }}
+        run: |
+          set -euo pipefail
+          if ! docker buildx imagetools inspect "$IMAGE:$TARGET" > /dev/null; then
+            echo "::error title=rollback::$IMAGE:$TARGET doesn't exist"
+            exit 1
+          fi
+          docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:$TARGET"
+          {
+            echo "\`latest\` now points at \`$IMAGE:$TARGET\`."
+            echo
+            echo "The next build (weekly on Tuesday, or a push to images/r-runner)"
+            echo "promotes a new image again if its tests pass. If the tests didn't"
+            echo "catch the problem, disable this workflow until it is fixed and add"
+            echo "a test for it."
           } | tee -a "$GITHUB_STEP_SUMMARY"
