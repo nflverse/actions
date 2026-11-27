@@ -37,6 +37,11 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends gh \
   && rm -rf /var/lib/apt/lists/*
 
+# pak updates already installed system requirements on CI (CI=true), which
+# means apt-get update + install in every job that builds a package from
+# source, even when nothing is missing. Missing ones are still installed.
+ENV PKG_SYSREQS_UPDATE=false
+
 RUN Rscript -e 'install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/stable/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))'
 
 # nflverse packages come as Linux binaries from r-universe. The plain
