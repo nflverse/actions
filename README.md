@@ -12,7 +12,8 @@ per job), jobs run in a prebuilt image and only refresh what is outdated.
 | [`commit-and-push`](commit-and-push) | Commit changed files and push, rebasing and retrying on concurrent pushes |
 | [`upload-timestamps`](upload-timestamps) | Upload `timestamp.txt`/`.json` once per release, only if the run updated data in it |
 | [`install-rclone`](install-rclone) | Pinned, checksum-verified rclone (Ubuntu's apt version fails on R2) |
-| [`enable-workflows`](.github/workflows/enable-workflows.yaml) | Daily job that re-enables scheduled workflows GitHub disabled for inactivity, replacing heartbeat commits. Needs the `NFLVERSE_WORKFLOWS_TOKEN` secret |
+| [`app-token`](app-token) | Short-lived token of the "nflverse actions" GitHub App, limited to the repos and permissions a step needs. Replaces the org PATs |
+| [`enable-workflows`](.github/workflows/enable-workflows.yaml) | Daily job that re-enables scheduled workflows GitHub disabled for inactivity, replacing heartbeat commits |
 
 Rollout status, open tasks and the repo migration plan: [ROLLOUT.md](ROLLOUT.md).
 
@@ -24,12 +25,20 @@ jobs:
     runs-on: ubuntu-latest
     container: ghcr.io/nflverse/r-runner:latest
     steps:
+      # read-only token for private packages like nflapi. The repo needs
+      # access to the org secret NFLVERSE_APP_PRIVATE_KEY.
+      - id: token
+        uses: nflverse/actions/app-token@v1
+        with:
+          client-id: ${{ vars.NFLVERSE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NFLVERSE_APP_PRIVATE_KEY }}
+          repositories: nflapi
+
       - uses: nflverse/actions/setup@v1
         with:
           packages: nflverse/nflreadr nflverse/nflverse-data nflverse/nflapi
           install-local: true
-          # read-only token, needed for private packages like nflapi
-          github-pat: ${{ secrets.NFLVERSE_READ_TOKEN }}
+          github-pat: ${{ steps.token.outputs.token }}
 
       - name: Release data
         run: Rscript exec/update_data.R
@@ -87,6 +96,25 @@ jobs:
         season: ${{ fromJson(needs.setup.outputs.seasons) }}
     # ...
 ```
+
+## `app-token` inputs
+
+| Input | Default | |
+|---|---|---|
+| `client-id`, `private-key` | | `vars.NFLVERSE_APP_CLIENT_ID`, `secrets.NFLVERSE_APP_PRIVATE_KEY` |
+| `repositories` | `""` | nflverse repos the token can access, e.g. `nflapi, nfldx`. Empty: the current repo. `all`: every repo |
+| `contents` | `read` | `read`, `write` (releases, pushes) or `""` |
+| `actions` | `""` | `read`, `write` or `""` |
+
+The token expires after one hour and is revoked when the job ends. A step
+that runs longer, e.g. a release step that scrapes and uploads for over an
+hour, needs its own token minted right before it. The action refuses to mint
+a token without any permission input, which would get every permission of the
+app.
+
+The private key is an org secret visible to selected repos only: add a repo
+there (org settings → Secrets → `NFLVERSE_APP_PRIVATE_KEY`) when it starts
+using the app.
 
 ## `setup` inputs
 

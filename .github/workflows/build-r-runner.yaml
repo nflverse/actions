@@ -114,7 +114,7 @@ jobs:
     with:
       # by digest, so a concurrent build can't swap the image under the tests
       image: ${{ needs.build.outputs.image }}
-    # NFLVERSE_READ_TOKEN for the private packages
+    # the app key for read tokens to the private packages
     secrets: inherit
     permissions:
       contents: read

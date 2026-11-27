@@ -3,9 +3,8 @@
 # re-enables every workflow across the org that GitHub disabled for
 # inactivity. It runs daily, so a disabled schedule misses at most one day.
 #
-# Needs the secret NFLVERSE_WORKFLOWS_TOKEN: a fine-grained token for the
-# nflverse org with access to all repositories and the permission
-# "Actions: Read and write" (nothing else).
+# Uses a token of the "nflverse actions" app for all repositories with only
+# "Actions: write" (see app-token/).
 on:
   schedule:
     - cron: "41 3 * * *"
@@ -25,7 +24,6 @@ jobs:
   enable:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.NFLVERSE_WORKFLOWS_TOKEN }}
       DRY_RUN: ${{ inputs.dry-run || false }}
       # Workflows to leave disabled, one "repo/workflow-path" per line.
       # Whole repos as "repo/*".
@@ -33,13 +31,24 @@ jobs:
         nflverse/nflverse-pff/*
         nflverse/NFLData.jl/.github/workflows/CompatHelper.yml
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: app-token
+
+      - id: token
+        uses: ./app-token
+        with:
+          client-id: ${{ vars.NFLVERSE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NFLVERSE_APP_PRIVATE_KEY }}
+          repositories: all
+          contents: ""
+          actions: write
+
       - name: Enable workflows disabled for inactivity
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
         run: |
           set -euo pipefail
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::error::The secret NFLVERSE_WORKFLOWS_TOKEN is missing"
-            exit 1
-          fi
 
           excluded() {
             local key="$1/$2" pattern
