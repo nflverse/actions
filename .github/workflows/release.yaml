@@ -1,0 +1,71 @@
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: >
+          Major version tag to point at main's HEAD. v1 for non-breaking
+          changes. Breaking changes to inputs or outputs get the next major
+          version.
+        required: true
+        default: v1
+
+# The only way to move or create a v* tag: the ruleset "release tags" lets
+# nobody but this workflow (GitHub Actions) change them. Runs the full tests
+# on main's HEAD first, then moves the tag there.
+name: Release
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error title=release::Run the release on main"
+            exit 1
+          fi
+          if ! [[ "$TAG" =~ ^v[1-9][0-9]*$ ]]; then
+            echo "::error title=release::tag must be a major version like v1, got '$TAG'"
+            exit 1
+          fi
+
+  test:
+    needs: check
+    uses: ./.github/workflows/test.yaml
+    secrets: inherit
+    permissions:
+      contents: read
+
+  tag:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Point ${{ inputs.tag }} at ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          old=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha 2> /dev/null || true)
+          if [ -z "$old" ]; then
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" > /dev/null
+            msg="Created \`$TAG\` at \`$GITHUB_SHA\`."
+          elif [ "$old" == "$GITHUB_SHA" ]; then
+            msg="\`$TAG\` already points at \`$GITHUB_SHA\`."
+          else
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG" \
+              -f sha="$GITHUB_SHA" -F force=true > /dev/null
+            msg="Moved \`$TAG\` from \`$old\` to \`$GITHUB_SHA\`. Roll back: git revert on main, then release again."
+          fi
+          echo "$msg" | tee -a "$GITHUB_STEP_SUMMARY"
