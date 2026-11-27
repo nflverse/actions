@@ -32,6 +32,12 @@ Last updated: 2026-11-27
       nflverse-pff (stale since 2024) and NFLData.jl CompatHelper are disabled
       for inactivity and kept that way via `EXCLUDE`. Remove them there to
       revive them. The daily schedule is live.
+- [x] Image safety (2026-11-27): only tested images become `latest`
+      (candidate → tests incl. all consumer repos → promote), rollback via
+      `rollback-to`, base pinned to R 4.6 with Dependabot. zstd layers.
+- [x] Repo rules (2026-11-27): ruleset `main` (PR + required `all tests`, no
+      force push, no bypass). `v1` moves only via the Release workflow (moved
+      to e25869f, tested).
 - [x] Private package path tested (`setup-private` job): nflapi installed
       from GitHub at HEAD in 18s.
 - [x] `upload-timestamps` tested 2026-11-27 (nflverse-pbp run 46053835741 from
@@ -44,6 +50,12 @@ Last updated: 2026-11-27
       package.
 - [ ] Migrate repos (below). After each repo uses the central jobs, delete
       its heartbeat workflow (only once `enable-workflows` runs).
+- [ ] GitHub App instead of the three PATs (#1, plan in the issue). Needs
+      an org owner to create it. Then: `app-token` action, switch
+      `enable-workflows` and the read token first, the upload token per repo
+      (check release steps under 1h: ngs-data and nflverse-data jobs run
+      42–54 min). Also the bypass actor for a `v*` tag ruleset: the release
+      workflow moves tags with the app's token, nobody else can.
 - [ ] Afterwards: retire the `nflverse.workflows` R package (nflverse-workflows
       repo) once nothing calls it.
 
@@ -53,7 +65,7 @@ Setup / total seconds from the latest successful run before migration.
 
 | # | Repo / workflow | Setup / total | Packages for `setup` | Notes |
 |---|---|---|---|---|
-| 1 | nflverse-pbp `update_data`, `update_teams_color_logos` | 26–31 / 61–72 (own image already) | `nflverse/nflfastR nflverse/nflreadr nflverse/nflverse-data` | **PR #108 open, tested on the branch** (jobs 53–70s, image pull + setup 27–40s). After merge: delete the `ghcr.io/nflverse/nflverse-pbp` package if it's private. Switch from its own image + `exec/refresh_nflverse.R` to r-runner + `setup`; `upload_timestamps` job → action; then delete `docker/` and `build_image.yaml` there |
+| 1 | nflverse-pbp `update_data`, `update_teams_color_logos` | 26–31 / 61–72 (own image already) | `nflverse/nflfastR nflverse/nflreadr nflverse/nflverse-data` | **Done** (#108, merged 2026-11-27; jobs 53–70s, image pull + setup 27–40s). Open: delete the `ghcr.io/nflverse/nflverse-pbp` package if it's private. Switch from its own image + `exec/refresh_nflverse.R` to r-runner + `setup`; `upload_timestamps` job → action; then delete `docker/` and `build_image.yaml` there |
 | 2 | nflverse-pbp-internal `release_raw_pbp` (every 15 min), `refresh_raw_pbp` | 62 / 70 | `nflverse/nflapi nflverse/nflverse-data nflverse/nflreadr`, `install-local: true` | Biggest gain. First private package (needs `NFLVERSE_READ_TOKEN`). Commit step → `commit-and-push` |
 | 3 | ngs-data `update_ngs` | 73–109 per job | `nflverse/nflverse-data nflverse/nflreadr` | Setup job → `season-matrix` (first-season 2016) |
 | 3 | nflverse-players `update_players` | 64–96 per job, 12+ jobs | `nflverse/nflapi nflverse/nflverse-espn nflverse/nflverse-data nflverse/nflreadr nflverse/undercover`, `install-local: true` | `season-matrix` with `roster: true`, first-season 1999 |

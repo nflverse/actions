@@ -9,9 +9,10 @@ on:
         required: true
         default: v1
 
-# The only way to move or create a v* tag: the ruleset "release tags" lets
-# nobody but this workflow (GitHub Actions) change them. Runs the full tests
-# on main's HEAD first, then moves the tag there.
+# The way to move or create a v* tag: runs the full tests on main's HEAD
+# first, then moves the tag there. A tag ruleset that blocks direct pushes
+# follows once the nflverse GitHub App exists (#1): GITHUB_TOKEN can't bypass
+# rulesets, so this workflow will then move the tag with the app's token.
 name: Release
 
 permissions:
