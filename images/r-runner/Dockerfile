@@ -53,6 +53,8 @@ RUN . /etc/os-release && export VERSION_CODENAME \
 # with the version number. The setup action compares RemoteSha with GitHub
 # HEAD, so we reinstall every package that comes from r-universe with
 # install.packages(), which keeps r-universe's DESCRIPTION as is.
+# Help pages, HTML docs and vignettes are removed in the same layer to make the
+# image smaller to pull. Jobs never read them.
 COPY packages.txt /tmp/build/packages.txt
 RUN Rscript -e ' \
     pkgs <- readLines("/tmp/build/packages.txt"); \
@@ -65,6 +67,8 @@ RUN Rscript -e ' \
     cat("Reinstalling from r-universe to keep RemoteSha:", reinstall, "\n"); \
     install.packages(reinstall); \
   ' \
+  && find "$(Rscript -e 'cat(.libPaths()[1])')" -mindepth 2 -maxdepth 2 -type d \
+       \( -name help -o -name html -o -name doc \) -exec rm -rf {} + \
   && rm -rf /tmp/build /tmp/Rtmp* /var/lib/apt/lists/*
 
 # Smoke test: fail the build if a package is missing or can't be loaded, or if

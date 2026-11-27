@@ -14,6 +14,11 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      image:
+        description: Image to test, e.g. a test-<branch> tag pushed by a branch build
+        required: false
+        default: ghcr.io/nflverse/r-runner:latest
 
 name: Test actions
 
@@ -84,7 +89,7 @@ jobs:
   setup:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    container: ghcr.io/nflverse/r-runner:latest
+    container: ${{ inputs.image || 'ghcr.io/nflverse/r-runner:latest' }}
     steps:
       # The action under test lives in this repo, so check out first and turn
       # the action's own checkout off
@@ -112,7 +117,7 @@ jobs:
   setup-local:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    container: ghcr.io/nflverse/r-runner:latest
+    container: ${{ inputs.image || 'ghcr.io/nflverse/r-runner:latest' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -151,7 +156,7 @@ jobs:
       (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    container: ghcr.io/nflverse/r-runner:latest
+    container: ${{ inputs.image || 'ghcr.io/nflverse/r-runner:latest' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -188,7 +193,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        container: ["", "ghcr.io/nflverse/r-runner:latest"]
+        container: ["", "${{ inputs.image || 'ghcr.io/nflverse/r-runner:latest' }}"]
     name: commit-and-push (${{ matrix.container || 'runner' }})
     runs-on: ubuntu-latest
     # an empty image runs the job on the runner itself
@@ -246,7 +251,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        container: ["", "ghcr.io/nflverse/r-runner:latest"]
+        container: ["", "${{ inputs.image || 'ghcr.io/nflverse/r-runner:latest' }}"]
     name: install-rclone (${{ matrix.container || 'runner' }})
     runs-on: ubuntu-latest
     # an empty image runs the job on the runner itself
