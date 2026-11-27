@@ -144,6 +144,45 @@ jobs:
       - name: Check results
         run: Rscript -e 'nflversetestpkg::hello(); stopifnot(requireNamespace("praise"))'
 
+  # The private package path: no r-universe binary, GitHub install with the
+  # read-only org secret NFLVERSE_READ_TOKEN
+  setup-private:
+    if: >-
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    container: ghcr.io/nflverse/r-runner:latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check secret
+        env:
+          READ_TOKEN: ${{ secrets.NFLVERSE_READ_TOKEN }}
+        run: |
+          if [ -z "$READ_TOKEN" ]; then
+            echo "::error::The org secret NFLVERSE_READ_TOKEN isn't available to this repo"
+            exit 1
+          fi
+
+      - name: Run setup (private GitHub package)
+        uses: ./setup
+        with:
+          checkout: false
+          packages: nflverse/nflapi
+          github-pat: ${{ secrets.NFLVERSE_READ_TOKEN }}
+
+      - name: Check results
+        env:
+          GITHUB_PAT: ${{ secrets.NFLVERSE_READ_TOKEN }}
+        run: |
+          Rscript -e '
+            loadNamespace("nflapi")
+            sha <- packageDescription("nflapi", fields = "RemoteSha")
+            head <- gh::gh("/repos/nflverse/nflapi/commits/HEAD")$sha
+            cat("nflapi", format(packageVersion("nflapi")), sha, head, "\n")
+            stopifnot(identical(sha, head))
+          '
+
   commit-and-push:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     strategy:
