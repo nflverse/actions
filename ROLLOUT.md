@@ -49,6 +49,11 @@ Last updated: 2026-11-27
 - [x] Ruleset `release tags`: only the app can create, move or delete `v*`
       tags, i.e. only the Release workflow. Direct pushes are rejected
       (tested).
+- [x] System libs (2026-11-27, #11): `libcurl4-openssl-dev libssl-dev
+      libicu-dev` in the image plus `PKG_SYSREQS_UPDATE=false`. No more
+      apt-get in jobs that build private packages from source. Setup in the
+      consumer tests: pbp-internal 18 → 14s, players 18 → 15s, rosters
+      33 → 24s.
 - [x] Private package path tested (`setup-private` job): nflapi installed
       from GitHub at HEAD in 18s.
 - [x] `upload-timestamps` tested 2026-11-27 (nflverse-pbp run 46053835741 from
@@ -56,15 +61,11 @@ Last updated: 2026-11-27
 
 ## Open
 
-- [ ] Add `libcurl4-openssl-dev libssl-dev libicu-dev` to the image: pak
-      runs apt-get for them (~4s) on every GitHub source install of a private
-      package. Seen in every nflverse-pbp-internal run (every 15 min).
 - [ ] Migrate repos (below). After each repo uses the central jobs, delete
       its heartbeat workflow (only once `enable-workflows` runs).
 - [ ] Data repos: switch `NFLVERSE_READ_TOKEN` and the upload token
       `NFLVERSE_GH_TOKEN` to `app-token` during each repo's migration
-      (done: nflverse-pbp-internal; nflverse-pbp still uses
-      `NFLVERSE_GH_TOKEN`). Add the
+      (done: nflverse-pbp-internal, nflverse-pbp). Add the
       repo to the visibility of the org secret `NFLVERSE_APP_PRIVATE_KEY`
       first. Release steps must stay under 1 hour per token (ngs-data and
       nflverse-data jobs run 42–54 min): split them or mint the token right
@@ -78,7 +79,7 @@ Setup / total seconds from the latest successful run before migration.
 
 | # | Repo / workflow | Setup / total | Packages for `setup` | Notes |
 |---|---|---|---|---|
-| 1 | nflverse-pbp `update_data`, `update_teams_color_logos` | 26–31 / 61–72 (own image already) | `nflverse/nflfastR nflverse/nflreadr nflverse/nflverse-data` | **Done** (#108, merged 2026-11-27; jobs 53–70s, image pull + setup 27–40s). Open: delete the `ghcr.io/nflverse/nflverse-pbp` package if it's private. Switch from its own image + `exec/refresh_nflverse.R` to r-runner + `setup`; `upload_timestamps` job → action; then delete `docker/` and `build_image.yaml` there |
+| 1 | nflverse-pbp `update_data`, `update_teams_color_logos` | 26–31 / 61–72 (own image already) | `nflverse/nflfastR nflverse/nflreadr nflverse/nflverse-data` | **Done** (#108, #109, 2026-11-27; jobs 53–70s, image pull + setup 27–40s). App tokens for all uploads (nflverse-data, nflverse-pbp), no PAT left. Old `nflverse-pbp` image package deleted | Switch from its own image + `exec/refresh_nflverse.R` to r-runner + `setup`; `upload_timestamps` job → action; then delete `docker/` and `build_image.yaml` there |
 | 2 | nflverse-pbp-internal `release_raw_pbp` (every 15 min), `refresh_raw_pbp` | 62 / 70 | `nflverse/nflapi nflverse/nflverse-data nflverse/nflreadr`, `install-local: true` | **Done** (nflverse-pbp-internal#2, 2026-11-27): ~40s per run (pull 13–21s, setup 18–21s incl. building nflapi). First repo on app tokens: read for nflapi in setup, write to nflverse-pbp only on the release step (uploads show as `nflverse-actions[bot]`). No PAT left |
 | 3 | ngs-data `update_ngs` | 73–109 per job | `nflverse/nflverse-data nflverse/nflreadr` | Setup job → `season-matrix` (first-season 2016) |
 | 3 | nflverse-players `update_players` | 64–96 per job, 12+ jobs | `nflverse/nflapi nflverse/nflverse-espn nflverse/nflverse-data nflverse/nflreadr nflverse/undercover`, `install-local: true` | `season-matrix` with `roster: true`, first-season 1999 |
@@ -100,6 +101,14 @@ Setup / total seconds from the latest successful run before migration.
   `setup` compares with GitHub HEAD. The image build fails if that breaks.
 - `setup` never fails the job; problems are warning annotations plus a job
   summary table. A failing update script after it is the real signal.
+- pak updates already installed system requirements on CI (`CI=true`):
+  apt-get update + install in every source build, even with nothing
+  missing. The image sets `PKG_SYSREQS_UPDATE=false`; missing ones are
+  still installed.
+- Most data workflows are started by guga31bb's cron jobs via
+  `gh workflow run` (GitHub's schedules are unreliable), so runs show up as
+  `workflow_dispatch`. When a migration renames a workflow or changes its
+  inputs, tell guga.
 - `GITHUB_PAT` for `setup` must never be the upload token: `setup` installs
   unpinned GitHub code.
 - Org is on GitHub Free: 20 concurrent jobs org-wide. Shorter jobs and
