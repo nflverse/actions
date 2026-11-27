@@ -141,7 +141,7 @@ dep_satisfied <- function(package, op, version) {
 remotes <- data.frame(
   package = ifelse(grepl("=", refs), sub("=.*", "", refs), NA_character_),
   repo = sub(".*=", "", refs),
-  head = NA_character_,
+  head = rep(NA_character_, length(refs)),
   stringsAsFactors = FALSE
 )
 
