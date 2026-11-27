@@ -256,7 +256,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./install-rclone
-      - run: rclone version | grep -q "rclone v1.76.0"
+      # no "| grep -q": grep exits on the first match and rclone gets SIGPIPE
+      # (exit 141 under pipefail)
+      - run: '[[ "$(rclone version)" == *"rclone v1.76.0"* ]]'
 
   # Every repo that uses (or will use) the image: its GitHub packages and the
   # dependencies in its DESCRIPTION must install and load. Catches a missing
