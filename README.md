@@ -14,6 +14,8 @@ per job), jobs run in a prebuilt image and only refresh what is outdated.
 | [`install-rclone`](install-rclone) | Pinned, checksum-verified rclone (Ubuntu's apt version fails on R2) |
 | [`enable-workflows`](.github/workflows/enable-workflows.yaml) | Daily job that re-enables scheduled workflows GitHub disabled for inactivity, replacing heartbeat commits. Needs the `NFLVERSE_WORKFLOWS_TOKEN` secret |
 
+Rollout status, open tasks and the repo migration plan: [ROLLOUT.md](ROLLOUT.md).
+
 ## Usage
 
 ```yaml
@@ -109,7 +111,6 @@ package's version and commit.
 - **Set `shell: bash` in container jobs.** `run:` steps in a job with
   `container:` use `sh` by default, not bash. Add `defaults: run: shell: bash`
   to the workflow if a step uses bash syntax.
-
 - **Only public packages in the image.** Private packages (nflapi, ngsscrapR,
   nflverse.espn, nfldx, ...) go into `packages` of the setup action. Put their
   dependencies into [`packages.txt`](images/r-runner/packages.txt) though, so
