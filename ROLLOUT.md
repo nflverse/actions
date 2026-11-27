@@ -24,17 +24,24 @@ Last updated: 2026-11-27
       `enable-workflows`, Dependabot, tests. Tagged `v1` at 1722d56.
 - [x] Tests green on the runner and in the image. Setup in the image: 29–38s
       per job including the image pull.
+- [x] Tokens created 2026-11-27: `NFLVERSE_WORKFLOWS_TOKEN` (secret in this
+      repo, Actions r/w on all org repos, expires after 1 year) and
+      `NFLVERSE_READ_TOKEN` (org secret, Contents read on nflapi, ngsscrapR,
+      nflverse-espn, nfldx, expires after 1 year). Renew both before they expire.
+- [x] `enable-workflows` dry run: token reads all 40 non-archived repos.
+      nflverse-pff (stale since 2024) and NFLData.jl CompatHelper are disabled
+      for inactivity and kept that way via `EXCLUDE`. Remove them there to
+      revive them. The daily schedule is live.
+- [x] Private package path tested (`setup-private` job): nflapi installed
+      from GitHub at HEAD in 18s.
 
 ## Open
 
-- [ ] Create secret `NFLVERSE_WORKFLOWS_TOKEN` in this repo (fine-grained,
-      nflverse org, all repos, only "Actions: Read and write"). Then run
-      "Enable workflows" manually with `dry-run`, then without.
-- [ ] Create `NFLVERSE_READ_TOKEN` (fine-grained, read-only "Contents" on
-      nflapi, ngsscrapR, nflverse-espn, nfldx), ideally as an org secret.
 - [ ] `upload-timestamps` is untested (writes to real releases). First real
       test: when nflverse-pbp switches its `upload_timestamps` job to it.
-- [ ] `enable-workflows` has never run.
+- [ ] Add `libcurl4-openssl-dev libssl-dev libicu-dev` to the image: pak
+      runs apt-get for them (~4s) on every GitHub source install of a private
+      package.
 - [ ] Migrate repos (below). After each repo uses the central jobs, delete
       its heartbeat workflow (only once `enable-workflows` runs).
 - [ ] Afterwards: retire the `nflverse.workflows` R package (nflverse-workflows
