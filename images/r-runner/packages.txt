@@ -1,0 +1,49 @@
+# R packages preinstalled in ghcr.io/nflverse/r-runner. One package per line.
+# Their hard dependencies are installed as well.
+# Only public packages! Private nflverse packages are installed at job time by
+# the setup action. Their dependencies belong in this list though.
+
+# nflverse (from nflverse.r-universe.dev)
+nflreadr
+nflversedata
+nflfastR
+fastrmodels
+gsisdecoder
+
+# Data handling
+arrow
+data.table
+dplyr
+tidyr
+tibble
+purrr
+readr
+stringr
+stringi
+lubridate
+janitor
+tidyselect
+jsonlite
+XML
+xml2
+
+# Web
+curl
+httr
+httr2
+rvest
+gh
+piggyback
+
+# Utilities
+cli
+glue
+rlang
+fs
+here
+logger
+magrittr
+pkgload
+future
+furrr
+progressr

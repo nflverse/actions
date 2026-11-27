@@ -1,0 +1,140 @@
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "images/**"
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "images/**"
+      - "**.md"
+  # test every newly pushed image
+  workflow_run:
+    workflows: ["Build r-runner image"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+name: Test actions
+
+permissions:
+  contents: read
+
+jobs:
+  season-matrix:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: current
+        uses: ./season-matrix
+        with:
+          first-season: 2016
+
+      - id: full
+        uses: ./season-matrix
+        with:
+          first-season: 2016
+          full-rebuild: true
+
+      - id: list
+        uses: ./season-matrix
+        with:
+          first-season: 2016
+          season-rebuild: "2019, 2017.0,2019"
+
+      - id: roster
+        uses: ./season-matrix
+        with:
+          first-season: 1999
+          roster: true
+
+      - id: invalid
+        continue-on-error: true
+        uses: ./season-matrix
+        with:
+          first-season: 2016
+          season-rebuild: "2015"
+
+      - name: Check outputs
+        env:
+          CURRENT: ${{ steps.current.outputs.seasons }}
+          CURRENT_SEASON: ${{ steps.current.outputs.current-season }}
+          FULL: ${{ steps.full.outputs.seasons }}
+          LIST: ${{ steps.list.outputs.seasons }}
+          ROSTER: ${{ steps.roster.outputs.current-season }}
+          INVALID: ${{ steps.invalid.outcome }}
+        run: |
+          set -euo pipefail
+          test "$CURRENT" == "[$CURRENT_SEASON]"
+          test "$(jq 'first' <<< "$FULL")" == 2016
+          test "$(jq 'last' <<< "$FULL")" == "$CURRENT_SEASON"
+          test "$LIST" == "[2017,2019]"
+          # the roster season starts before (or with) the regular season
+          test "$ROSTER" -ge "$CURRENT_SEASON"
+          test "$INVALID" == "failure"
+          echo "All season-matrix checks passed"
+
+  setup:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    container: ghcr.io/nflverse/r-runner:latest
+    steps:
+      # The action under test lives in this repo, so check out first and turn
+      # the action's own checkout off
+      - uses: actions/checkout@v7
+
+      - name: Run setup (public GitHub packages)
+        uses: ./setup
+        with:
+          checkout: false
+          packages: nflverse/nflreadr, nflverse/nflverse-data nflfastR=nflverse/nflfastR
+
+      - name: Check results
+        run: |
+          Rscript -e '
+            for (p in c("nflreadr", "nflversedata", "nflfastR")) {
+              sha <- packageDescription(p, fields = "RemoteSha")
+              head <- gh::gh(paste0("/repos/nflverse/", c(nflreadr = "nflreadr", nflversedata = "nflverse-data", nflfastR = "nflfastR")[[p]], "/commits/HEAD"))$sha
+              cat(p, sha, head, "\n")
+              stopifnot(identical(sha, head))
+            }
+          '
+        env:
+          GITHUB_PAT: ${{ github.token }}
+
+  setup-local:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    container: ghcr.io/nflverse/r-runner:latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: actions
+
+      # A minimal package in the workspace root, like a data repo that is an
+      # R package (nflverse-pfr, nflverse-ftn, ...). praise is not in the
+      # image, so install-deps has to install it.
+      - name: Create a test package
+        run: |
+          mkdir -p R
+          cat > DESCRIPTION <<'EOF'
+          Package: nflversetestpkg
+          Version: 0.0.1
+          Title: Test Package
+          Description: Test package for the setup action.
+          License: MIT
+          Imports: nflreadr, cli (>= 3.0.0), praise
+          EOF
+          echo 'hello <- function() praise::praise()' > R/hello.R
+          echo 'export(hello)' > NAMESPACE
+
+      - name: Run setup
+        uses: ./actions/setup
+        with:
+          checkout: false
+          install-local: true
+
+      - name: Check results
+        run: Rscript -e 'nflversetestpkg::hello(); stopifnot(requireNamespace("praise"))'

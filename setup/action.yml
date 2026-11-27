@@ -1,0 +1,81 @@
+name: nflverse setup
+description: >
+  Checks out the repo and brings the R packages of a job running in
+  ghcr.io/nflverse/r-runner up to date: keeps GitHub packages at their latest
+  commit, installs dependencies missing from the image and optionally the
+  checked out repo itself.
+
+inputs:
+  packages:
+    description: >
+      GitHub packages to keep at their latest commit, separated by whitespace
+      or commas, as owner/repo or pkg=owner/repo, e.g.
+      "nflverse/nflreadr nflverse/nflverse-data nflverse/nflapi".
+      r-universe binaries are used when r-universe has built the latest
+      commit, otherwise the package is installed from GitHub.
+    required: false
+    default: ""
+  install-deps:
+    description: >
+      Install dependencies of the checked out repo's DESCRIPTION that are
+      missing from the image or too old. Does nothing if there is no
+      DESCRIPTION file.
+    required: false
+    default: "true"
+  install-local:
+    description: Install the checked out repo as an R package (without dependencies).
+    required: false
+    default: "false"
+  github-pat:
+    description: >
+      Token for GitHub API calls and package installs from GitHub. Private
+      packages need a token with read access to them. Never pass the upload
+      token here: this step installs unpinned code from GitHub.
+    required: false
+    default: ${{ github.token }}
+  checkout:
+    description: Check out the repo with actions/checkout first.
+    required: false
+    default: "true"
+  ref:
+    description: Passed to actions/checkout.
+    required: false
+    default: ""
+  fetch-depth:
+    description: Passed to actions/checkout.
+    required: false
+    default: "1"
+  checkout-token:
+    description: >
+      Passed to actions/checkout as token. Pushes from later steps (e.g.
+      commit-and-push) use it.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      if: inputs.checkout == 'true'
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.ref }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        token: ${{ inputs.checkout-token }}
+
+    - name: Check runtime
+      shell: bash
+      run: |
+        if ! command -v Rscript > /dev/null || ! Rscript -e 'quit(status = !all(c("pak", "gh", "jsonlite") %in% rownames(installed.packages())))' > /dev/null 2>&1; then
+          echo "::error title=nflverse setup::This action needs R with pak, gh and jsonlite. Run the job in ghcr.io/nflverse/r-runner (container: ghcr.io/nflverse/r-runner:latest)."
+          exit 1
+        fi
+
+    - name: Refresh R packages
+      shell: bash
+      env:
+        GITHUB_PAT: ${{ inputs.github-pat }}
+        NFLVERSE_PACKAGES: ${{ inputs.packages }}
+        NFLVERSE_INSTALL_DEPS: ${{ inputs.install-deps }}
+        NFLVERSE_INSTALL_LOCAL: ${{ inputs.install-local }}
+      run: Rscript "$GITHUB_ACTION_PATH/refresh.R"

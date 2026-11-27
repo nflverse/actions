@@ -1,0 +1,14 @@
+# Third-party action versions live in this repo only. Data repos reference
+# nflverse/actions/<action>@v1 and get these bumps without changes.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/setup"
+      - "/season-matrix"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
