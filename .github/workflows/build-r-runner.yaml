@@ -113,12 +113,11 @@ jobs:
           manifest=$(docker buildx imagetools inspect --raw "${IMAGE_REF%:*}@$digest")
           compressed=$(jq '[.layers[].size] | add / 1e6 | round' <<< "$manifest")
           compression=$(jq -r '[.layers[].mediaType | split(".") | last] | unique | join(", ")' <<< "$manifest")
-          unpacked=$(docker image inspect -f '{{.Size}}' "$IMAGE_REF" | awk '{ printf "%d", $1 / 1e6 }')
 
           {
-            echo "| Image | Compressed | Unpacked | Layers | Pull | Create | Start + load nflfastR |"
-            echo "|---|---|---|---|---|---|---|"
-            printf '| `%s` | %s MB | %s MB | %s | %.1fs | %.1fs | %.1fs |\n' "$IMAGE_REF" \
-              "$compressed" "$unpacked" "$compression" \
+            echo "| Image | Compressed | Layers | Pull | Create | Start + load nflfastR |"
+            echo "|---|---|---|---|---|---|"
+            printf '| `%s` | %s MB | %s | %.1fs | %.1fs | %.1fs |\n' "$IMAGE_REF" \
+              "$compressed" "$compression" \
               "$(awk "BEGIN { print $t1 - $t0 }")" "$(awk "BEGIN { print $t2 - $t1 }")" "$(awk "BEGIN { print $t3 - $t2 }")"
           } | tee -a "$GITHUB_STEP_SUMMARY"
