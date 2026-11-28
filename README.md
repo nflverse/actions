@@ -40,11 +40,21 @@ jobs:
           install-local: true
           github-pat: ${{ steps.token.outputs.token }}
 
+      # write token for exactly the repos the job uploads to, minted after
+      # setup (setup installs unpinned code from GitHub)
+      - id: upload-token
+        uses: nflverse/actions/app-token@v1
+        with:
+          client-id: ${{ vars.NFLVERSE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NFLVERSE_APP_PRIVATE_KEY }}
+          repositories: nflverse-data
+          contents: write
+
       - name: Release data
         run: Rscript exec/update_data.R
         env:
           # upload token only on the step that uploads
-          GH_TOKEN: ${{ secrets.NFLVERSE_GH_TOKEN }}
+          GH_TOKEN: ${{ steps.upload-token.outputs.token }}
 ```
 
 Commit files a job produced (replaces the git config/add/commit/push steps):
@@ -64,10 +74,18 @@ Release timestamps once per run, in a final job:
     if: ${{ !cancelled() && needs.setup.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
+      - id: token
+        uses: nflverse/actions/app-token@v1
+        with:
+          client-id: ${{ vars.NFLVERSE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NFLVERSE_APP_PRIVATE_KEY }}
+          repositories: nflverse-data
+          contents: write
+
       - uses: nflverse/actions/upload-timestamps@v1
         with:
           started-at: ${{ needs.setup.outputs.started_at }}
-          token: ${{ secrets.NFLVERSE_GH_TOKEN }}
+          token: ${{ steps.token.outputs.token }}
           releases: |
             nflverse/nflverse-data pbp
             nflverse/nflverse-data stats_player

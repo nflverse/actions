@@ -16,9 +16,8 @@ Last updated: 2026-11-28
 - Tokens come from the org-owned GitHub App "nflverse actions" via the
   `app-token` action (#1): short-lived, scoped per step to the repos and
   permissions it needs. Read-only for `setup` (private packages), write only
-  on the step that uploads, minted after `setup`. The PATs
-  `NFLVERSE_READ_TOKEN` and `NFLVERSE_GH_TOKEN` stay only until the
-  remaining repos are migrated.
+  on the step that uploads, minted after `setup`. No PATs left (their org
+  secrets were deleted 2026-11-28).
 
 ## Done
 
@@ -29,8 +28,8 @@ Last updated: 2026-11-28
       per job including the image pull.
 - [x] PATs created 2026-11-27 (superseded by the app): `NFLVERSE_WORKFLOWS_TOKEN`
       (deleted, PAT revoked) and `NFLVERSE_READ_TOKEN` (org secret, Contents
-      read on nflapi, ngsscrapR, nflverse-espn, nfldx, expires 2027-11). Still
-      used by the step 4 repos until their migration.
+      read on nflapi, ngsscrapR, nflverse-espn, nfldx). Both retired
+      2026-11-28 (see Open).
 - [x] `enable-workflows` dry run: token reads all 40 non-archived repos.
       nflverse-pff (stale since 2024) and NFLData.jl CompatHelper are disabled
       for inactivity and kept that way via `EXCLUDE`. Remove them there to
