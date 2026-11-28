@@ -81,8 +81,9 @@ Last updated: 2026-11-28
         `update_players` (disabled for inactivity, `EXCLUDE`) still use
         `NFLVERSE_GH_TOKEN`: they fail if re-enabled after the revocation
         and need app tokens first.
-- [ ] Revoke the PATs `NFLVERSE_READ_TOKEN` and `NFLVERSE_GH_TOKEN` and
-      delete the org secrets (#1). Nothing active uses them anymore.
+- [x] PATs retired 2026-11-28 (#1): org secrets `NFLVERSE_READ_TOKEN` and
+      `NFLVERSE_GH_TOKEN` deleted, `NFLVERSE_READ_TOKEN`'s PAT revoked.
+      `NFLVERSE_GH_TOKEN` was tanho63's PAT: only they can revoke it.
 - [ ] Retire the `nflverse.workflows` R package (nflverse-workflows repo):
       no workflow calls it anymore.
 - [ ] Checks: rotc player details split at its first run (Sun 2026-11-29
