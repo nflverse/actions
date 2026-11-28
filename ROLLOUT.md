@@ -4,7 +4,7 @@ Moving nflverse data update workflows from `setup-r` + `setup-r-dependencies`
 (60–110s setup per job) to `ghcr.io/nflverse/r-runner` + the actions in this
 repo. Pattern first proven in nflverse-pbp #106/#107.
 
-Last updated: 2026-11-27
+Last updated: 2026-11-28
 
 ## Decisions
 
@@ -69,7 +69,7 @@ Last updated: 2026-11-27
 - [ ] Data repos: switch `NFLVERSE_READ_TOKEN` and the upload token
       `NFLVERSE_GH_TOKEN` to `app-token` during each repo's migration
       (done: nflverse-pbp-internal, nflverse-pbp, ngs-data, nflverse-players,
-      nflverse-ftn). Add the
+      nflverse-ftn, nflverse-rosters). Add the
       repo to the visibility of the org secret `NFLVERSE_APP_PRIVATE_KEY`
       first. Release steps must stay under 1 hour per token. Check where long
       jobs spend their time first: in ngs-data it was setup, not the release
@@ -100,7 +100,8 @@ repo plus a ROLLOUT.md update here (`main` is protected: PR + `all tests`).
    the release step. Release steps over ~50 min need splitting (1-hour app
    tokens).
 5. **Rewrite**, keeping workflow file names and dispatch inputs (guga's cron
-   jobs dispatch them):
+   jobs dispatch them). Renames and merged workflows are fine: the user has
+   access to guga's server and updates the crontab at merge time.
    - `container: ghcr.io/nflverse/r-runner:latest`, `nflverse/actions/setup@v1`
      with the GitHub packages (table below), `install-local` if needed.
    - Private packages: `app-token` with `repositories: <the private repos>`
@@ -167,7 +168,7 @@ Setup / total seconds from the latest successful run before migration.
 | 3 | ngs-data `update_ngs` | 73–109 per job | `nflverse/nflverse-data nflverse/nflreadr` | **Done** (ngs-data#7, 2026-11-27): jobs 27–39s. The 25–54 min jobs were `setup-r` / `setup-r-dependencies` hanging, not the release step. App tokens: this repo (`ngs-season`) for the season jobs, nflverse-data (`nextgen_stats`) for combine |
 | 3 | nflverse-players `update_players` | 64–96 per job, 12+ jobs | `nflverse/nflapi nflverse/nflverse-espn nflverse/nflverse-data nflverse/nflreadr nflverse/undercover`, `install-local: true` | **Done** (nflverse-players#33, 2026-11-27): 14 jobs at 44–65s, setup 15–22s. Long jobs (up to 33 min) were setup hangs. App tokens: read for nflapi/nflverse-espn, write to this repo (+ nflverse-data for `build_dataset`). R-CMD-check / test-package use a read app token. Open: the test "manual overwrite is clean" fails on master (`inst/players_manual_overwrite.json` needs cleaning) |
 | 3 | nflverse-ftn (4 workflows) | 81 / 91 | `nflverse/nflverse-data nflverse/nflreadr`, `install-local: true` | **Done** (nflverse-ftn#10, 2026-11-27): ~25s per run (was 80–94s, outliers up to 23 min). App tokens per workflow for nflverse-ftn (`raw`) and/or nflverse-data (`ftn_charting`, `pbp_participation`). Real job names. `rebuild` has never run: its token lasts 1 hour |
-| 4 | nflverse-rosters (rosters, injuries, depth_charts, officials) | 65–103 | nflapi, ngsscrapR, nflverse-espn, nflverse-players, nflverse-data, nflreadr (depth charts: nfldx secrets) | Consider merging the three 07:07 workflows into one |
+| 4 | nflverse-rosters `update_data` (rosters, injuries, depth charts) | 50–111 / 64–250 | `nflverse/nflapi nflverse/ngsscrapR nflverse/nflverse-espn nflverse/nflverse-players nflverse/nflverse-data nflverse/nflreadr` (DESCRIPTION deps, `setup` installs them) | **Done** (nflverse-rosters#105, 2026-11-28): one `update_data.yaml` replaces the three workflows, current season only, input `datasets` (all, rosters, injuries, depth_charts), `all` skips injuries Mar–Aug. One dispatch per day in guga's crontab, GitHub schedule off. Jobs 51–103s, run ~1:50. Read token nflapi/ngsscrapR/nflverse-espn, write nflverse-data. Dropped: officials (NGS 403 since 2026-09-03), NFL Data Exchange (dead; `NFLDX_*` secrets deleted), duplicate weekly roster upload. Stale `roster_2026.qs` / `depth_charts_2026.qs` deleted |
 | 4 | nflverse-pfr (snap_counts, adv_stats) | 63–86 | `nflverse/nflverse-data nflverse/undercover`, `install-local: true` | Crons on `:00`: offset them |
 | 4 | rotc (otc, player_ids, player_details) | 74 / 180 | `nflverse/nflverse-data nflverse/nflreadr`, `install-local: true` | |
 | 4 | espnscrapeR-data `update_qbr` | 73 / 138 | `jthomasmock/espnscrapeR nflverse/nflverse-data nflverse/nflreadr` | fpi/winrate workflow runs on macOS for no reason |
@@ -195,7 +196,15 @@ Setup / total seconds from the latest successful run before migration.
 - Most data workflows are started by guga31bb's cron jobs via
   `gh workflow run` (GitHub's schedules are unreliable), so runs show up as
   `workflow_dispatch`. When a migration renames a workflow or changes its
-  inputs, tell guga.
+  inputs, the crontab on guga's server needs updating (the user has access).
+  GitHub's schedule on top of that only duplicates runs, hours late: comment
+  it out.
+- A workflow file that isn't on the default branch yet can't be dispatched
+  (`gh workflow run --ref <branch>` only works for registered workflows). To
+  test a new or renamed workflow, add a temporary `push: branches: [<branch>]`
+  trigger, push, then revert it and squash-merge.
+- `nflverse_save()` no longer writes `.qs`. Current-season `.qs` assets go
+  stale; delete them during the migration (older seasons are unchanged).
 - `GITHUB_PAT` for `setup` must never be the upload token: `setup` installs
   unpinned GitHub code.
 - Org is on GitHub Free: 20 concurrent jobs org-wide. Shorter jobs and
