@@ -69,7 +69,7 @@ Last updated: 2026-11-28
 - [ ] Data repos: switch `NFLVERSE_READ_TOKEN` and the upload token
       `NFLVERSE_GH_TOKEN` to `app-token` during each repo's migration
       (done: nflverse-pbp-internal, nflverse-pbp, ngs-data, nflverse-players,
-      nflverse-ftn, nflverse-rosters, nflverse-pfr, rotc). Add the
+      nflverse-ftn, nflverse-rosters, nflverse-pfr, rotc, nfldata). Add the
       repo to the visibility of the org secret `NFLVERSE_APP_PRIVATE_KEY`
       first. Release steps must stay under 1 hour per token. Check where long
       jobs spend their time first: in ngs-data it was setup, not the release
@@ -172,7 +172,7 @@ Setup / total seconds from the latest successful run before migration.
 | 4 | nflverse-pfr `update_data` (snap counts, adv stats), `update_combine`, `update_draft_picks` | 58–92 / 65–416 | `nflverse/nflverse-data nflverse/nflreadr nflverse/undercover` (scripts use `pkgload::load_all()`, no `install-local`) | **Done** (nflverse-pfr#46, 2026-11-28): `update_data.yaml` replaces snap counts + adv stats, input `datasets` (all, snap_counts, adv_stats), dispatched every 6h in season by guga's crontab (GitHub schedule off). Jobs 54–117s, setup 18–19s. Write token nflverse-pfr (piggyback raw releases, `GITHUB_PAT`) + nflverse-data. Combine and draft picks keep their GitHub schedules (not in guga's crontab), moved off `:00`, write nflverse-data; **untested, check at their first runs in 2027** (combine Mar 3, draft picks: Wednesdays in Jan, daily Feb 1–15). Season-level adv stats failed 2026-10-01 to 2026-11-28 (direct `rvest::read_html()` to PFR blocked on runners), fixed in nflverse-pfr#47 via ScrapeOps (+4 requests per run) |
 | 4 | rotc `update_otc` (player IDs → contracts), `update_otc_player_details` | 62–85 / 106–9541 | `nflverse/nflverse-data nflverse/nflreadr`, `install-local: true` | **Done** (rotc#16, 2026-11-28): GitHub schedules (no external dispatch), off `:00`. Player IDs and contracts are one workflow with two jobs (contracts reads the fresh `otc_players`). Jobs 40–66s. Player details scrapes 4,649 pages in 1–3 h: split into scrape script (no token) → token → release script. **First run of the split: Sun 2026-11-29 04:29 UTC, check it.** Write token nflverse-data only. Deleted stale `otc_players.qs`, `historical_contracts.qs`, `historical_contracts.csv.gz` (2022) |
 | 4 | espnscrapeR-data `update_qbr` | 73 / 138 | `jthomasmock/espnscrapeR nflverse/nflverse-data nflverse/nflreadr` | fpi/winrate workflow runs on macOS for no reason |
-| 4 | nfldata `release_games`, `release_trades` | | `nflverse/nflverse-data` | |
+| 4 | nfldata `release_games`, `release_trades` | 63 / 73 | `nflverse/nflverse-data nflverse/nflreadr` | **Done** (nfldata#50, 2026-11-28): runs 33–37s (setup 5–7s). Triggered by Lee's pushes of `data/games.rds` / `data/trades.csv` (no cron); releases queue via `concurrency`. Write token nflverse-data. Test dispatches found no changes, so **the first upload with the app token is Lee's next games push: check uploader in `schedules`**. Repo is 8.9 GB of history (current tree 11 MB): edit via `git clone --depth 1 --filter=blob:none --no-checkout` + `git sparse-checkout set --no-cone /.github/`; `setup` checks out depth 1 |
 | 4 | nflverse-data `run_archive`, `run_s3_archive` | | `nflverse/nflverse-data nflverse/nflreadr`, `install-local: true` | rclone step → `install-rclone` |
 
 ## Gotchas learned
@@ -205,6 +205,8 @@ Setup / total seconds from the latest successful run before migration.
   trigger, push, then revert it and squash-merge.
 - Jobs that run longer than an hour before uploading (rotc player details):
   split the script so the upload token is minted after the long part.
+- zsh (the local shell) doesn't word-split unquoted variables: loop over
+  literal values or arrays, not `for x in $list` / `set -- $pair`.
 - `nflverse_save()` no longer writes `.qs`. Current-season `.qs` assets go
   stale; delete them during the migration (older seasons are unchanged).
 - `GITHUB_PAT` for `setup` must never be the upload token: `setup` installs
