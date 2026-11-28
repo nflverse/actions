@@ -84,8 +84,9 @@ Last updated: 2026-11-28
 - [x] PATs retired 2026-11-28 (#1): org secrets `NFLVERSE_READ_TOKEN` and
       `NFLVERSE_GH_TOKEN` deleted, `NFLVERSE_READ_TOKEN`'s PAT revoked.
       `NFLVERSE_GH_TOKEN` was tanho63's PAT: only they can revoke it.
-- [ ] Retire the `nflverse.workflows` R package (nflverse-workflows repo):
-      no workflow calls it anymore.
+- [x] `nflverse.workflows` R package retired 2026-11-28: no workflow calls
+      it anymore, nflverse-workflows repo archived (read-only, unarchive to
+      revive).
 - [ ] Checks: rotc player details split at its first run (Sun 2026-11-29
       04:29 UTC); nfldata's first app-token upload at Lee's next games push.
 
