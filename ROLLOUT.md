@@ -68,25 +68,23 @@ Last updated: 2026-11-28
       central jobs and app tokens, heartbeat workflows deleted. Release
       steps stay under 1 hour per token; long jobs were setup hangs
       everywhere except rotc player details (split, see gotchas).
-- [ ] Remaining PAT / `nflverse.workflows` uses (org-wide scan of all
-      workflow files, 2026-11-28). `NFLVERSE_READ_TOKEN`: none left.
+- [x] Remaining PAT / `nflverse.workflows` uses (org-wide scan of all
+      workflow files, 2026-11-28), all resolved 2026-11-28:
       - nflreadr R-CMD-check, test-coverage, pr-commands: `NFLVERSE_GH_TOKEN`
-        env for tests that only read public releases
-        (`tests/testthat/test-from_url.R`, falls back to `gh::gh_token()`).
-        Drop the env lines.
-      - nfl4th `update_precompute` (daily): `nflverse.workflows` season
-        helpers → `season-matrix`, migrate to the container. Uploads with
-        `GITHUB_TOKEN`.
+        env lines dropped (nflreadr#328). `tests/testthat/test-from_url.R`
+        only reads public releases and passes with `gh::gh_token()`.
+      - nfl4th `update_precompute`: migrated (nfl4th#65, table below).
       - nflverse-drivecharts `update_drivecharts`, nflverse-injurybot
-        `update_injuries`: `NFLVERSE_GH_TOKEN`, dispatch only (schedules
-        commented out), no recorded runs.
+        `update_injuries` (dispatch only, no recorded runs): workflows
+        deleted (nflverse-drivecharts#2, nflverse-injurybot#1).
       - nflfastR-raw `run_patch` (disabled manually), nflverse-pff
-        `update_players` (disabled for inactivity, `EXCLUDE`): use
-        `NFLVERSE_GH_TOKEN`, would fail if re-enabled after the revocation.
-- [ ] Then revoke the PATs `NFLVERSE_READ_TOKEN` and `NFLVERSE_GH_TOKEN`
-      and delete the org secrets (#1).
-- [ ] Retire the `nflverse.workflows` R package (nflverse-workflows repo)
-      once nfl4th no longer calls it.
+        `update_players` (disabled for inactivity, `EXCLUDE`) still use
+        `NFLVERSE_GH_TOKEN`: they fail if re-enabled after the revocation
+        and need app tokens first.
+- [ ] Revoke the PATs `NFLVERSE_READ_TOKEN` and `NFLVERSE_GH_TOKEN` and
+      delete the org secrets (#1). Nothing active uses them anymore.
+- [ ] Retire the `nflverse.workflows` R package (nflverse-workflows repo):
+      no workflow calls it anymore.
 - [ ] Checks: rotc player details split at its first run (Sun 2026-11-29
       04:29 UTC); nfldata's first app-token upload at Lee's next games push.
 
@@ -187,6 +185,7 @@ Setup / total seconds from the latest successful run before migration.
 | 4 | espnscrapeR-data `update_qbr` | 60 / 128 | `jthomasmock/espnscrapeR nflverse/nflverse-data nflverse/nflreadr` | **Done** (espnscrapeR-data#8, 2026-11-28): 84s (setup 17s). GitHub schedule (no external dispatch), 09:17 UTC, fires hours late. Write token this repo (`raw_qbr`) + nflverse-data (`espn_data`). FPI/winrate workflow removed (dispatch only, no runs, data stops 2022). Expected log errors: HTTP 404 for playoff season totals and HTTP 500 for playoff weeks 1–4 until the playoffs start. Deleted stale `qbr_*_level.qs` |
 | 4 | nfldata `release_games`, `release_trades` | 63 / 73 | `nflverse/nflverse-data nflverse/nflreadr` | **Done** (nfldata#50, 2026-11-28): runs 33–37s (setup 5–7s). Triggered by Lee's pushes of `data/games.rds` / `data/trades.csv` (no cron); releases queue via `concurrency`. Write token nflverse-data. Test dispatches found no changes, so **the first upload with the app token is Lee's next games push: check uploader in `schedules`**. Repo is 8.9 GB of history (current tree 11 MB): edit via `git clone --depth 1 --filter=blob:none --no-checkout` + `git sparse-checkout set --no-cone /.github/`; `setup` checks out depth 1 |
 | 4 | nflverse-data `run_archive`, `run_s3_archive` | 37–1116 per job | `nflverse/nflreadr ropensci/piggyback`, `install-local: true` | **Done** (nflverse-data#111, 2026-11-28): archive 26 jobs ≤ 90s (the 40 min runs were setup hangs, archive steps ≤ 84s), 746 assets by `nflverse-actions[bot]`. Token: `nflverse-data-archives` contents write only, also reads the public nflverse-data. S3: no app token (`github.token` downloads), `install-rclone`, 177s for 950 files; R2 can return a transient 5xx, rclone's retry handles it. `test.yaml` removed |
+| 5 | nfl4th `update_precompute` | 75 / 2672 (update script ~43 min, bootstrap) | `nflverse/nflverse-data nflverse/nflreadr`, `install-local: true` | **Done** (nfl4th#65, 2026-11-28): `season-matrix` (first season 2014) replaces `nflverse.workflows`, same inputs, `season_rebuild` now a string input (comma lists work in the dispatch form). Season job 33 min (setup 20s, `install-deps` adds xgboost), combine 42s. Uploads to its own release `nfl4th_infrastructure` with `GITHUB_TOKEN` (`contents: write` on the upload jobs): no app token, the job token outlives the ~40 min bootstrap. GitHub schedule (no external dispatch), 10:17 UTC Jan, Feb, Sep–Dec |
 
 ## Gotchas learned
 
